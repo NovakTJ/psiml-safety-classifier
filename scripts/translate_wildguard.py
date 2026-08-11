@@ -1,33 +1,14 @@
 #!/usr/bin/env python
 """Translate WildGuard examples via a cheap LLM using OpenRouter.
 
-Design notes
-------------
-- Each example is translated ONCE, into a single language selected at random
-  (seeded) from a pool of languages (default: the 30-language list).
-- Translates the *prompt* and *response* of each example in a single API call.
-- Writes one JSONL row per example.
-- Overwrites the original ``prompt`` / ``response`` fields in place with the
-  translation (no parallel ``translated_*`` column) and adds metadata columns:
-    original_idx, source_split, language, encoding_type, translation_model,
-    prompt_template_version, timestamp, verified_accurate_description,
-    augmentation_pipeline_version, notes
-- `verified_accurate_description` is hardcoded to False (translations need review).
-- Supports resuming: already-present (original_idx, language) rows in the output
-  file are skipped on re-run.
-- Failures (refusals, JSON parse failures, API errors) go to a separate
-  failures file and are NOT written to the main output.
+Each example is translated ONCE into a single seeded-random language, prompt
+and response in one API call, overwriting ``prompt``/``response`` in place.
+Resumable: (original_idx, language) rows already in the output are skipped.
+Failures go to a separate file.
 
-Usage
------
-    # smoke test: 4 examples into a random language drawn from a 2-language pool
+Usage:
     .venv/bin/python scripts/translate_wildguard.py --n-examples 4 --languages es,hi
-
-    # full run: 1000 examples, one random language each (out of all 30)
     .venv/bin/python scripts/translate_wildguard.py --n-examples 1000
-
-    # use the cheaper v4 flash model instead
-    .venv/bin/python scripts/translate_wildguard.py --model deepseek/deepseek-v4-flash-latest
 """
 
 from __future__ import annotations
@@ -48,8 +29,6 @@ import requests
 from tqdm import tqdm
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-
-# --- Constants -------------------------------------------------------------
 
 DEFAULT_LANGUAGES = [
     "zh", "es", "hi", "ar", "fr", "ru", "pt", "de", "ja", "ko",
@@ -77,8 +56,6 @@ CONFIG = "wildguardtrain"
 SPLIT = "train"
 
 
-# --- Prompt template -------------------------------------------------------
-
 def build_messages(language_name: str, prompt_text: str, response_text: str) -> list[dict[str, str]]:
     system = (
         f"You are a faithful, professional translator. Translate text from English into "
@@ -98,7 +75,7 @@ def build_messages(language_name: str, prompt_text: str, response_text: str) -> 
 
 
 def parse_json_output(text: str) -> dict[str, Any] | None:
-    """Robustly parse the model's JSON reply (handles fences and stray text)."""
+    """Parse the model's JSON reply (handles fences and stray text)."""
     text = (text or "").strip()
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text)
@@ -129,8 +106,6 @@ def _extract(obj: dict[str, Any], *keys: str) -> str:
     return ""
 
 
-# --- OpenRouter client -----------------------------------------------------
-
 def call_model(
     api_key: str,
     model: str,
@@ -139,7 +114,7 @@ def call_model(
     max_retries: int = 4,
     timeout: int = 180,
 ) -> str:
-    """Call the OpenRouter chat completions endpoint with retries/backoff."""
+    """OpenRouter chat completions call with retries/backoff."""
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -168,7 +143,6 @@ def call_model(
                 raise RuntimeError("API returned no choices")
             return (choices[0].get("message") or {}).get("content") or ""
 
-        # Retryable errors
         if resp.status_code in (429, 500, 502, 503, 504) or resp.status_code >= 500:
             attempt += 1
             if attempt > max_retries:
@@ -210,8 +184,7 @@ def translate_example(
 ) -> dict[str, Any]:
     """Translate one (example, language) pair; returns the output row or raises.
 
-    Empty/unparseable outputs and no-op (silent refusal) results are retried a
-    few times before giving up — empty replies are usually rate-limit artifacts.
+    Empty/unparseable outputs and no-op (silent refusal) results are retried.
     """
     language_name = LANGUAGE_NAMES[language]
     prompt_text = rec["prompt"]
@@ -244,8 +217,6 @@ def translate_example(
                 )
 
             out = dict(rec)
-            # In-place translation: the dataset's own prompt/response columns now
-            # hold the translated text; there is no parallel column.
             out["prompt"] = new_prompt
             out["response"] = new_response
             out["original_idx"] = idx
@@ -268,15 +239,10 @@ def translate_example(
             return out
         except RuntimeError as exc:
             last_err = exc
-            # No point retrying when the HTTP layer already exhausted retries
-            # (that error is a RuntimeError too, but retrying here is harmless
-            # and often succeeds once load drops).
             continue
     assert last_err is not None
     raise last_err
 
-
-# --- Data loading / sampling -----------------------------------------------
 
 def load_and_sample(
     n_examples: int,
@@ -325,8 +291,6 @@ def read_done_keys(path: Path) -> set[tuple[int, str]]:
                 done.add((rec["original_idx"], rec["language"]))
     return done
 
-
-# --- CLI -------------------------------------------------------------------
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
@@ -378,8 +342,7 @@ def main(argv: list[str] | None = None) -> int:
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.failures.parent.mkdir(parents=True, exist_ok=True)
 
-    # Resume support. Each example is translated ONCE, into one language
-    # assigned deterministically from the pool (seed-stable), not every language.
+    # Language assignment is deterministic, so resume keys are seed-stable.
     done = read_done_keys(args.output)
     # Prune stale failure records (rows that succeeded on a previous run).
     if args.failures.exists():
@@ -409,7 +372,7 @@ def main(argv: list[str] | None = None) -> int:
         print("nothing to do", file=sys.stderr)
         return 0
 
-    # Rough cost estimate (tokens ~ chars/4; input includes template overhead)
+    # Rough cost estimate (tokens ~ chars/4)
     total_chars = sum(len(r["prompt"]) + len(r["response"] or "") for r in records)
     est_in_tokens = int(total_chars / 4) + 80 * len(records)
     est_out_tokens = int(total_chars / 4)
@@ -450,7 +413,6 @@ def main(argv: list[str] | None = None) -> int:
                     })
                 pbar.update(1)
 
-    # Append results to output (resume-friendly)
     with args.output.open("a", encoding="utf-8") as f:
         for rec in results:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")

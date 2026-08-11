@@ -1,26 +1,13 @@
 #!/usr/bin/env python
-"""Combine the augmentation artifacts into one clean training JSONL.
+"""Combine the augmentation artifacts into one training JSONL.
 
-Includes the 4 categories:
-    original       English examples from the sampled set (data/sample.jsonl equiv.)
-    translation    the successfully translated rows (data/translated.jsonl)
-    obfuscation_en parseltongue rows built from harmful English prompts
-                   (data/train_weird_en.jsonl)
-    obfuscation_tr parseltongue rows built from harmful translated prompts
-                   (data/train_weird_tr.jsonl)
-
-The parseltongue pools contain one row per (harmful prompt x transform); we
-sample them down so that parseltongue rows are --parseltongue-frac of the final
-dataset (default 0.20). The target count and the English/translated split are
-computed from the actual pool sizes, so nothing is tied to the 1k run.
-
-Excludes anything that failed translation (data/translation_failures.jsonl) -
-those rows simply never appear.
+Categories: original (sampled English rows), translation (translated.jsonl),
+obfuscation_en / obfuscation_tr (parseltongue pools). The parseltongue pools
+are sampled down to --parseltongue-frac of the final dataset, split
+proportionally to pool sizes. Failed translations simply never appear.
 
 Usage:
-    .venv/bin/python scripts/combine_dataset.py                                      # 20% parseltongue
-    .venv/bin/python scripts/combine_dataset.py --parseltongue-frac 0.1             # 10%
-    .venv/bin/python scripts/combine_dataset.py --no-shuffle                        # grouped by type
+    .venv/bin/python scripts/combine_dataset.py --parseltongue-frac 0.1
 """
 
 from __future__ import annotations
@@ -82,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
     output = args.output or data_dir / "augmented.jsonl"
     now = datetime.now(timezone.utc).isoformat()
 
-    # Re-sample deterministically to get original_idx for the raw English rows.
+    # Re-sample deterministically to recover original_idx for the raw rows.
     selected, records = load_and_sample(args.n_examples, args.harmful_frac, args.seed)
     orig_by_idx = {idx: rec for idx, rec in zip(selected, records)}
 
@@ -112,8 +99,7 @@ def main(argv: list[str] | None = None) -> int:
             rec = json.loads(line)
             idx = rec.get("original_idx")
             if idx is None:
-                # raw English rows carry no wildguard index; recover it from the
-                # original (un-transformed) prompt text stored by the augment script
+                # English rows carry no index; recover via the original prompt.
                 match_text = rec.get("__original_prompt__") or rec.get("prompt")
                 idx = orig_by_prompt.get(match_text)
                 if idx is None:
@@ -134,8 +120,6 @@ def main(argv: list[str] | None = None) -> int:
         ("train_weird_tr.jsonl", "obfuscation_tr", "tr", load_pool("train_weird_tr.jsonl", "obfuscation_tr", "tr")),
     ]
 
-    # Sample parseltongue rows down to parseltongue_frac of the final dataset,
-    # split proportional to each pool's size.
     rng = random.Random(args.seed)
     n_base = len(originals) + len(translated)
     target = int(round(n_base * args.parseltongue_frac / (1.0 - args.parseltongue_frac)))
@@ -151,7 +135,6 @@ def main(argv: list[str] | None = None) -> int:
             share = int(round(target * len(pool) / avail)) if avail else 0
             share = min(share, len(pool))
             weird.extend(rng.sample(pool, share))
-        # fix rounding drift (over/under by at most a couple of rows)
         drift = target - len(weird)
         if drift > 0:
             leftovers = [rec for _, _, _, pool in pools for rec in pool if rec not in weird]

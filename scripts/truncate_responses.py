@@ -1,33 +1,19 @@
 #!/usr/bin/env python
 """Shorten the responses of a share of the rows that have one.
 
-The classifier has to fire on half-finished generations, so a random slice of
-rows with a response gets its response replaced by a random prefix.  For each
-selected row:
+The classifier has to fire on half-finished generations, so a random --frac of
+rows with a response gets its response replaced by a random prefix: draw
+c in [0, 1), keep the first round(c * N) words; redraw while the prefix is
+shorter than --min-length words. Responses with N <= min-length words (and
+whitespace-less responses, e.g. CJK text or some parseltongue transforms) are
+kept whole.
 
-    * pick a random c in [0, 1)
-    * keep the first round(c * N) words of the response, discarding the
-      (1-c)*N suffix (N = number of words)
-    * if the resulting prefix is shorter than --min-length words, redraw c
-      and try again; responses that are too short to ever keep --min-length
-      words (N <= min-length) are left whole
-
-Words are detected as whitespace-separated runs (no tokenizer needed).  Rows
-whose response has no whitespace at all (e.g. some parseltongue transforms)
-are reported and kept whole.
-
-The dataset has a single `response` column (translations overwrite it in
-place), so only that column is truncated.
-
-Selection is exactly --frac of the rows with a response, and both the
-selection and the drawn c are deterministic for a given --seed: they depend
-only on row_id, not on the order of rows in the input file.
+The drawn c is deterministic per (seed, row_id); already-truncated rows are
+never truncated again.
 
 Usage:
     .venv/bin/python scripts/truncate_responses.py \
         --input data/augmented.jsonl --output data/augmented.jsonl
-
-    # 60% of rows with responses, keep at least 10 words (default)
 """
 
 from __future__ import annotations
@@ -42,8 +28,7 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
-# A "word" is any maximal run of non-whitespace (handles \n, tabs, and the
-# ideographic/full-width spaces the parseltongue step likes to use).
+# A "word" is any maximal run of non-whitespace.
 _WORD_RE = re.compile(r"\S+")
 
 
@@ -76,7 +61,6 @@ def prefix_at(text: str, c: float, min_length: int) -> str | None:
     n = round(c * n_words)
     if n < min_length or n >= n_words:
         return None
-    # prefix ends right after the n-th word, preserving original whitespace
     return text[: spans[n - 1].end()]
 
 
@@ -139,13 +123,11 @@ def main(argv: list[str] | None = None) -> int:
     n_already = 0
     for i in selected:
         rec = rows[i]
-        # Idempotency guard: never truncate a row twice. Re-running the
-        # pipeline with --skip-combine operates on an already-truncated
-        # augmented.jsonl; without this, responses would be shortened again.
+        # Never truncate twice: re-runs with --skip-combine operate on an
+        # already-truncated file.
         if rec.get("response_truncated"):
             n_already += 1
             continue
-        # per-row RNG: reproducible and independent of row order in the file
         row_rng = random.Random(f"{args.seed}:{rec.get('row_id')}")
         new_resp, c = truncate_once(rec["response"], row_rng, args.min_length)
         if c is None:

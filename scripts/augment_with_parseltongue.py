@@ -1,43 +1,20 @@
 #!/usr/bin/env python
-"""Augment a text dataset with "weird character" transforms from P4RS3LT0NGV3.
+"""Augment a JSONL dataset with "weird character" transforms from P4RS3LT0NGV3.
 
-This script calls the P4RS3LT0NGV3 transforms through a small Node.js bridge.
-For each input example it produces one variant per selected transform, which is
-useful for training/adversarially evaluating a safety classifier on obfuscated
-or stylized text. Every selected column (default: ``prompt`` AND ``response``)
-gets the SAME transform applied.
+Calls the P4RS3LT0NGV3 transforms (vendor/, requires Node.js) through a Node
+bridge. Produces one variant per (example, transform); every selected column
+(default: prompt AND response) gets the SAME transform.
 
-Prerequisites
--------------
-- Node.js installed and on PATH.
-- The P4RS3LT0NGV3 repo cloned at vendor/P4RS3LT0NGV3 (already done).
-
-Usage
------
-    # See all 222 available transforms
+Usage:
     .venv/bin/python scripts/augment_with_parseltongue.py --list-transforms
-
-    # Augment a JSONL file: obfuscates the "prompt" AND "response" columns
     .venv/bin/python scripts/augment_with_parseltongue.py \
-        --input data/harmful_en.jsonl \
-        --output data/train_weird_en.jsonl
-
-    # Use only specific transforms
-    .venv/bin/python scripts/augment_with_parseltongue.py \
-        --transforms leetspeak,zalgo,circled,bold,upside_down \
-        --input data/harmful_en.jsonl \
-        --output data/train_weird_en.jsonl
-
-    # Restrict which columns are transformed
-    .venv/bin/python scripts/augment_with_parseltongue.py \
-        --fields prompt,response --input data/train.jsonl --output data/weird.jsonl
+        --input data/harmful_en.jsonl --output data/train_weird_en.jsonl
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -46,7 +23,6 @@ from typing import Any
 
 
 DEFAULT_TRANSFORMS = [
-    # Leet / visual substitutions
     "leetspeak",
     # Unicode “fancy text” blocks
     "bold",
@@ -116,9 +92,6 @@ def run_node_bridge(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def list_transforms() -> list[str]:
-    # The bridge supports a list command via an empty examples payload.
-    all_transforms = run_node_bridge({"transforms": [], "examples": []})
-    # If we want a real list we have to load them; fall back to reading the repo.
     repo = project_root() / "vendor" / "P4RS3LT0NGV3"
     transforms_dir = repo / "src" / "transformers"
     keys: list[str] = []
@@ -131,17 +104,6 @@ def list_transforms() -> list[str]:
             key = file.stem.replace("-", "_")
             keys.append(key)
     return sorted(keys)
-
-
-def read_jsonl(path: Path) -> list[dict[str, Any]]:
-    records = []
-    with path.open("r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            records.append(json.loads(line))
-    return records
 
 
 def write_jsonl(path: Path | None, records: list[dict[str, Any]]) -> None:
@@ -245,15 +207,12 @@ def main(argv: list[str] | None = None) -> int:
         print("error: no fields specified", file=sys.stderr)
         return 1
 
-    # Prepare examples with stable IDs; every field is sent to the bridge and
-    # transformed with the same transform.
     examples = []
     for idx, rec in enumerate(records):
         ex_id = rec.get(args.id_col) if args.id_col else idx
         fields = {name: rec.get(name, "") for name in field_names}
         examples.append({"id": ex_id, "fields": fields})
 
-    # Process in batches to keep Node payloads reasonable.
     out_records: list[dict[str, Any]] = []
     errors_seen: list[str] = []
 
@@ -262,10 +221,6 @@ def main(argv: list[str] | None = None) -> int:
         payload = {"transforms": transform_keys, "examples": batch}
         result = run_node_bridge(payload)
 
-        # Map id -> record index. Records are matched positionally via this map
-        # (the old batch.index(...) scan was O(n^2) and matched on dict equality,
-        # which silently aliased duplicate rows). Duplicate ids within a batch
-        # fall back to the first occurrence, matching the bridge's behaviour.
         id_to_pos: dict[Any, int] = {}
         for pos, ex in enumerate(batch):
             id_to_pos.setdefault(ex["id"], pos)
@@ -289,10 +244,8 @@ def main(argv: list[str] | None = None) -> int:
             augmented["__transform__"] = item["transform"]
             for name in field_names:
                 augmented[name] = outputs.get(name, "")
-            # --- metadata columns (translation file passes most through) ---
             augmented["encoding_type"] = item["transform"]
-            # Faithful by construction (mechanical transform), BUT inherit the
-            # verification status of the source row: a transform of an unverified
+            # Inherit verification status: a transform of an unverified
             # translation is still unverified content.
             augmented["verified_accurate_description"] = base.get("verified_accurate_description", True)
             augmented["augmentation_pipeline_version"] = "v1"

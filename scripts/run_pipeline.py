@@ -37,20 +37,8 @@ Usage
     # reuse an existing translated.jsonl (e.g. after a crash or a new run)
     .venv/bin/python scripts/run_pipeline.py --n-examples 1000 --skip-translate
 
-    # obfuscate a bigger target fraction of the final dataset
-    .venv/bin/python scripts/run_pipeline.py --skip-translate --parseltongue-frac 0.3
-
-    # truncate a different share of the responses / min prefix length
-    .venv/bin/python scripts/run_pipeline.py --skip-translate --truncate-frac 0.5 --truncate-min-length 8
-
-    # skip truncation entirely
-    .venv/bin/python scripts/run_pipeline.py --skip-translate --skip-truncate
-
     # quick smoke test: 4 examples, languages drawn from {es, hi}
     .venv/bin/python scripts/run_pipeline.py --n-examples 4 --languages es,hi
-
-    # cheaper/faster model
-    .venv/bin/python scripts/run_pipeline.py --n-examples 1000 --model deepseek/deepseek-v4-flash-0731
 """
 
 from __future__ import annotations
@@ -80,10 +68,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Skip the parseltongue step.")
     parser.add_argument("--parseltongue-frac", type=float, default=0.20,
                         help="Target share of parseltongue rows in the final dataset "
-                             "(default: 0.20, i.e. ~20%% of augmented.jsonl). "
-                             "Capped by the pool size; exact share is computed from "
-                             "actual row counts in combine_dataset.py, so nothing is "
-                             "hardcoded to the 1k run.")
+                             "(default: 0.20; capped by the pool size).")
     parser.add_argument("--skip-combine", action="store_true",
                         help="Skip the final combine step (run combine_dataset.py yourself).")
     parser.add_argument("--skip-truncate", action="store_true",
@@ -91,8 +76,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--truncate-frac", type=float, default=0.6,
                         help="Share of rows with a response to truncate (default: 0.6).")
     parser.add_argument("--truncate-min-length", type=int, default=10,
-                        help="Min words a kept prefix must have; redraw c until satisfied "
-                             "(default: 10).")
+                        help="Min words a kept prefix must have (default: 10).")
     parser.add_argument("--data-dir", type=Path, default=PROJECT_ROOT / "data")
     return parser.parse_args(argv)
 
