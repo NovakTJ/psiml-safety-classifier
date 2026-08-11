@@ -207,50 +207,70 @@ def translate_example(
     rec: dict[str, Any],
     language: str,
 ) -> dict[str, Any]:
-    """Translate one (example, language) pair; returns the output row or raises."""
+    """Translate one (example, language) pair; returns the output row or raises.
+
+    Empty/unparseable outputs and no-op (silent refusal) results are retried a
+    few times before giving up — empty replies are usually rate-limit artifacts.
+    """
     language_name = LANGUAGE_NAMES[language]
     prompt_text = rec["prompt"]
     response_text = rec["response"] or ""
 
-    messages = build_messages(language_name, prompt_text, response_text)
-    raw = call_model(api_key, model, messages)
-    obj = parse_json_output(raw)
-    if obj is None:
-        raise RuntimeError(f"could not parse JSON from model output (len={len(raw)}): {raw[:300]!r}")
+    last_err: RuntimeError | None = None
+    for attempt in range(3):
+        if attempt:
+            time.sleep(2 * attempt)
+        try:
+            messages = build_messages(language_name, prompt_text, response_text)
+            raw = call_model(api_key, model, messages)
+            obj = parse_json_output(raw)
+            if obj is None:
+                raise RuntimeError(
+                    f"could not parse JSON from model output (len={len(raw)}): {raw[:200]!r}"
+                )
+            translated_prompt = _extract(obj, "prompt", "Prompt", "PROMPT", "translated_prompt")
+            translated_response = _extract(obj, "response", "Response", "RESPONSE", "translated_response")
+            if not translated_prompt:
+                raise RuntimeError(f"model returned empty 'prompt': {raw[:200]!r}")
+            # Never trust the model for fields that were empty in the source.
+            if not response_text:
+                translated_response = ""
 
-    translated_prompt = _extract(obj, "prompt", "Prompt", "PROMPT", "translated_prompt")
-    translated_response = _extract(obj, "response", "Response", "RESPONSE", "translated_response")
-    if not translated_prompt:
-        raise RuntimeError(f"model returned empty 'prompt': {raw[:300]!r}")
-    # Never trust the model for fields that were empty in the source.
-    if not response_text:
-        translated_response = ""
+            # Silent-refusal detection: model echoes the source instead of translating.
+            if is_noop_translation(prompt_text, translated_prompt):
+                raise RuntimeError(
+                    "no-op translation (model returned source text unchanged); raw=" + raw[:200]
+                )
 
-    # Silent-refusal detection: model echoes the source instead of translating.
-    if is_noop_translation(prompt_text, translated_prompt):
-        raise RuntimeError("no-op translation (model returned source text unchanged); raw=" + raw[:200])
-
-    out = dict(rec)
-    out["translated_prompt"] = translated_prompt
-    out["translated_response"] = translated_response
-    out["original_idx"] = idx
-    out["source_split"] = SPLIT
-    out["language"] = language
-    out["encoding_type"] = "none"
-    out["translation_model"] = model
-    out["prompt_template_version"] = TEMPLATE_VERSION
-    out["timestamp"] = datetime.now(timezone.utc).isoformat()
-    out["verified_accurate_description"] = False
-    out["augmentation_pipeline_version"] = PIPELINE_VERSION
-    notes = []
-    if not rec.get("response"):
-        notes.append("no_response")
-    if not translated_response:
-        notes.append("empty_translated_response")
-    elif response_text and is_noop_translation(response_text, translated_response):
-        notes.append("noop_response_translation")
-    out["notes"] = ";".join(notes)
-    return out
+            out = dict(rec)
+            out["translated_prompt"] = translated_prompt
+            out["translated_response"] = translated_response
+            out["original_idx"] = idx
+            out["source_split"] = SPLIT
+            out["language"] = language
+            out["encoding_type"] = "none"
+            out["translation_model"] = model
+            out["prompt_template_version"] = TEMPLATE_VERSION
+            out["timestamp"] = datetime.now(timezone.utc).isoformat()
+            out["verified_accurate_description"] = False
+            out["augmentation_pipeline_version"] = PIPELINE_VERSION
+            notes = []
+            if not rec.get("response"):
+                notes.append("no_response")
+            if not translated_response:
+                notes.append("empty_translated_response")
+            elif response_text and is_noop_translation(response_text, translated_response):
+                notes.append("noop_response_translation")
+            out["notes"] = ";".join(notes)
+            return out
+        except RuntimeError as exc:
+            last_err = exc
+            # No point retrying when the HTTP layer already exhausted retries
+            # (that error is a RuntimeError too, but retrying here is harmless
+            # and often succeeds once load drops).
+            continue
+    assert last_err is not None
+    raise last_err
 
 
 # --- Data loading / sampling -----------------------------------------------
@@ -358,6 +378,24 @@ def main(argv: list[str] | None = None) -> int:
     # Resume support. Each example is translated ONCE, into one language
     # assigned deterministically from the pool (seed-stable), not every language.
     done = read_done_keys(args.output)
+    # Prune stale failure records (rows that succeeded on a previous run).
+    if args.failures.exists():
+        stale = 0
+        kept = []
+        for line in args.failures.read_text(encoding="utf-8").splitlines():
+            try:
+                f = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if (f.get("original_idx"), f.get("language")) in done:
+                stale += 1
+            else:
+                kept.append(f)
+        if stale:
+            with args.failures.open("w", encoding="utf-8") as fh:
+                for f in kept:
+                    fh.write(json.dumps(f, ensure_ascii=False) + "\n")
+            print(f"pruned {stale} stale failure records", file=sys.stderr)
     lang_rng = random.Random(f"seed{args.seed}:assign-language")
     assigned = {idx: lang_rng.choice(languages) for idx in selected}
     tasks = [(idx, rec, assigned[idx]) for idx, rec in zip(selected, records)

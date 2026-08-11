@@ -24,6 +24,11 @@ scripts/run_pipeline.py          ← orchestrates both steps below (subprocess)
                 ▼
         data/train_weird.jsonl                     ← one row per (harmful example,
                                                      transform); labeled harmful
+
+        scripts/combine_dataset.py                 ← merges the three artifacts into
+                │                                     one clean training file
+                ▼
+        data/augmented.jsonl                       ← 17,198 rows (final dataset)
 ```
 
 ## Output schema (translated.jsonl)
@@ -59,6 +64,9 @@ Failures (refusals, unparseable JSON) go to `data/translation_failures.jsonl`, n
 
 # cheaper/faster model
 .venv/bin/python scripts/run_pipeline.py --n-examples 1000 --model deepseek/deepseek-v4-flash-0731
+
+# merge everything into one clean training file (data/augmented.jsonl)
+.venv/bin/python scripts/combine_dataset.py
 
 # the two steps, run individually:
 .venv/bin/python scripts/translate_wildguard.py --n-examples 1000
