@@ -114,7 +114,7 @@ def main(argv: list[str] | None = None) -> int:
             if idx is None:
                 # raw English rows carry no wildguard index; recover it from the
                 # original (un-transformed) prompt text stored by the augment script
-                match_text = rec.get("__original_text__") or rec.get("prompt")
+                match_text = rec.get("__original_prompt__") or rec.get("prompt")
                 idx = orig_by_prompt.get(match_text)
                 if idx is None:
                     print(f"warning: {name} row without matching original, dropping", file=sys.stderr)

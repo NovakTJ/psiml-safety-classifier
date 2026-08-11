@@ -5,8 +5,13 @@
  * Reads a JSON payload from stdin with shape:
  *   { transforms: ["leetspeak", "zalgo", ...], examples: [{id, text}, ...] }
  *
+ * Each example may either be the legacy single-text shape {id, text} or the
+ * multi-field shape {id, fields: {prompt, response, ...}}; in the latter case
+ * every field is transformed with the SAME transform.
+ *
  * Writes to stdout:
- *   { results: [{id, text, transform, output}, ...], errors: [{transform, message}, ...] }
+ *   { results: [{id, text, transform, outputs: {field: output}}, ...],
+ *     errors:  [{transform, message}, ...] }
  */
 
 const path = require('path');
@@ -48,12 +53,18 @@ function run(payload) {
     }
     for (const ex of examples) {
       try {
-        const output = tx.func(String(ex.text || ''));
+        // New shape: { id, fields: { prompt, response, ... } }; apply the same
+        // transform to every field. Legacy shape { id, text } still works.
+        const fields = ex.fields || (ex.text !== undefined ? { text: ex.text } : {});
+        const outputs = {};
+        for (const [name, value] of Object.entries(fields)) {
+          outputs[name] = tx.func(String(value == null ? '' : value));
+        }
         results.push({
           id: ex.id,
           text: ex.text,
           transform: key,
-          output,
+          outputs,
         });
       } catch (err) {
         errors.push({ transform: key, id: ex.id, message: err.message });

@@ -7,7 +7,8 @@ Design notes
   (seeded) from a pool of languages (default: the 30-language list).
 - Translates the *prompt* and *response* of each example in a single API call.
 - Writes one JSONL row per example.
-- Keeps the original record untouched and adds translation + metadata columns:
+- Overwrites the original ``prompt`` / ``response`` fields in place with the
+  translation (no parallel ``translated_*`` column) and adds metadata columns:
     original_idx, source_split, language, encoding_type, translation_model,
     prompt_template_version, timestamp, verified_accurate_description,
     augmentation_pipeline_version, notes
@@ -228,23 +229,25 @@ def translate_example(
                 raise RuntimeError(
                     f"could not parse JSON from model output (len={len(raw)}): {raw[:200]!r}"
                 )
-            translated_prompt = _extract(obj, "prompt", "Prompt", "PROMPT", "translated_prompt")
-            translated_response = _extract(obj, "response", "Response", "RESPONSE", "translated_response")
-            if not translated_prompt:
+            new_prompt = _extract(obj, "prompt", "Prompt", "PROMPT")
+            new_response = _extract(obj, "response", "Response", "RESPONSE")
+            if not new_prompt:
                 raise RuntimeError(f"model returned empty 'prompt': {raw[:200]!r}")
             # Never trust the model for fields that were empty in the source.
             if not response_text:
-                translated_response = ""
+                new_response = ""
 
             # Silent-refusal detection: model echoes the source instead of translating.
-            if is_noop_translation(prompt_text, translated_prompt):
+            if is_noop_translation(prompt_text, new_prompt):
                 raise RuntimeError(
                     "no-op translation (model returned source text unchanged); raw=" + raw[:200]
                 )
 
             out = dict(rec)
-            out["translated_prompt"] = translated_prompt
-            out["translated_response"] = translated_response
+            # In-place translation: the dataset's own prompt/response columns now
+            # hold the translated text; there is no parallel column.
+            out["prompt"] = new_prompt
+            out["response"] = new_response
             out["original_idx"] = idx
             out["source_split"] = SPLIT
             out["language"] = language
@@ -257,9 +260,9 @@ def translate_example(
             notes = []
             if not rec.get("response"):
                 notes.append("no_response")
-            if not translated_response:
-                notes.append("empty_translated_response")
-            elif response_text and is_noop_translation(response_text, translated_response):
+            if not new_response:
+                notes.append("empty_translation")
+            elif response_text and is_noop_translation(response_text, new_response):
                 notes.append("noop_response_translation")
             out["notes"] = ";".join(notes)
             return out

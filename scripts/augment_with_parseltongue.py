@@ -4,7 +4,8 @@
 This script calls the P4RS3LT0NGV3 transforms through a small Node.js bridge.
 For each input example it produces one variant per selected transform, which is
 useful for training/adversarially evaluating a safety classifier on obfuscated
-or stylized text.
+or stylized text. Every selected column (default: ``prompt`` AND ``response``)
+gets the SAME transform applied.
 
 Prerequisites
 -------------
@@ -16,21 +17,20 @@ Usage
     # See all 222 available transforms
     .venv/bin/python scripts/augment_with_parseltongue.py --list-transforms
 
-    # Augment a JSONL file whose records have a "prompt" column
+    # Augment a JSONL file: obfuscates the "prompt" AND "response" columns
     .venv/bin/python scripts/augment_with_parseltongue.py \
-        --input data/train.jsonl \
-        --text-col prompt \
-        --output data/train_weird.jsonl
-
-    # Pipe a small sample
-    echo '{"prompt":"hello world"}' | \
-        .venv/bin/python scripts/augment_with_parseltongue.py --text-col prompt
+        --input data/harmful_en.jsonl \
+        --output data/train_weird_en.jsonl
 
     # Use only specific transforms
     .venv/bin/python scripts/augment_with_parseltongue.py \
         --transforms leetspeak,zalgo,circled,bold,upside_down \
-        --input data/train.jsonl \
-        --output data/train_weird.jsonl
+        --input data/harmful_en.jsonl \
+        --output data/train_weird_en.jsonl
+
+    # Restrict which columns are transformed
+    .venv/bin/python scripts/augment_with_parseltongue.py \
+        --fields prompt,response --input data/train.jsonl --output data/weird.jsonl
 """
 
 from __future__ import annotations
@@ -171,9 +171,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Output JSONL file (stdout if omitted).",
     )
     parser.add_argument(
-        "--text-col",
-        default="prompt",
-        help='Column containing the text to transform (default: "prompt").',
+        "--fields",
+        default="prompt,response",
+        help='Comma-separated columns to transform; each gets the same transform '
+             '(default: "prompt,response"). Columns missing from a record are '
+             'treated as empty strings.',
     )
     parser.add_argument(
         "--id-col",
@@ -238,11 +240,18 @@ def main(argv: list[str] | None = None) -> int:
         print("warning: no input records", file=sys.stderr)
         return 0
 
-    # Prepare examples with stable IDs.
+    field_names = [f.strip() for f in args.fields.split(",") if f.strip()]
+    if not field_names:
+        print("error: no fields specified", file=sys.stderr)
+        return 1
+
+    # Prepare examples with stable IDs; every field is sent to the bridge and
+    # transformed with the same transform.
     examples = []
     for idx, rec in enumerate(records):
         ex_id = rec.get(args.id_col) if args.id_col else idx
-        examples.append({"id": ex_id, "text": rec.get(args.text_col, "")})
+        fields = {name: rec.get(name, "") for name in field_names}
+        examples.append({"id": ex_id, "fields": fields})
 
     # Process in batches to keep Node payloads reasonable.
     out_records: list[dict[str, Any]] = []
@@ -253,6 +262,14 @@ def main(argv: list[str] | None = None) -> int:
         payload = {"transforms": transform_keys, "examples": batch}
         result = run_node_bridge(payload)
 
+        # Map id -> record index. Records are matched positionally via this map
+        # (the old batch.index(...) scan was O(n^2) and matched on dict equality,
+        # which silently aliased duplicate rows). Duplicate ids within a batch
+        # fall back to the first occurrence, matching the bridge's behaviour.
+        id_to_pos: dict[Any, int] = {}
+        for pos, ex in enumerate(batch):
+            id_to_pos.setdefault(ex["id"], pos)
+
         for err in result.get("errors", []):
             msg = f"transform={err.get('transform')} id={err.get('id')} error={err.get('message')}"
             if msg not in errors_seen:
@@ -260,11 +277,18 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"warning: {msg}", file=sys.stderr)
 
         for item in result.get("results", []):
-            base = records[start + batch.index(next(e for e in batch if e["id"] == item["id"]))]
+            pos = id_to_pos.get(item["id"])
+            if pos is None:
+                print(f"warning: bridge returned unknown id {item['id']!r}; skipping", file=sys.stderr)
+                continue
+            base = records[start + pos]
+            outputs = item.get("outputs") or {}
             augmented = dict(base)
-            augmented["__original_text__"] = item["text"]
+            augmented["__original_prompt__"] = base.get("prompt", "")
+            augmented["__original_response__"] = base.get("response", "")
             augmented["__transform__"] = item["transform"]
-            augmented[args.text_col] = item["output"]
+            for name in field_names:
+                augmented[name] = outputs.get(name, "")
             # --- metadata columns (translation file passes most through) ---
             augmented["encoding_type"] = item["transform"]
             # Faithful by construction (mechanical transform), BUT inherit the
