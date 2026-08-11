@@ -62,6 +62,33 @@ place (no parallel column), plus:
 
 Failures (refusals, unparseable JSON) go to `data/translation_failures.jsonl`, never the main output.
 
+## Output schema (augmented.jsonl)
+
+The final training file is schema-consistent: every row — original, translation,
+obfuscation_en, obfuscation_tr, truncated or not — carries the same columns.
+Where a column does not apply to a row type it keeps an *empty value* (``None`` /
+``""`` / ``False``) instead of dropping the key, so a loader reads `row[col]`
+directly, no `row.get()` chains or per-row-type branches.
+
+`scripts/dataset_schema.py` is the single source of truth (`FINAL_COLUMNS`,
+`INTERMEDIATE_COLUMNS`, `normalize()`); every step that writes a dataset passes
+its rows through it.
+
+| column | on every row | notes |
+|---|---|---|
+| `row_id`, `augmentation_type`, `original_idx`, `source_split`, `language`, `encoding_type`, `prompt_template_version`, `augmentation_pipeline_version`, `timestamp`, `notes` | yes | `source_split`=`train`; `prompt_template_version`/`augmentation_pipeline_version`=`v1`; `encoding_type`=`none` or the transform key |
+| `translation_model` | yes | OpenRouter model id, or `null` for rows that were never machine-translated (originals + their obfuscations) |
+| `verified_accurate_description` | yes | `true` for raw / obfuscated-raw rows; `false` for LLM translations and their obfuscations |
+| `response`, `response_harm_label`, `response_refusal_label` | yes | `""` / `null` when the source row had no response |
+| `response_truncated` | yes | `false`, or `true` when the response was shortened |
+| `response_truncation_c`, `response_truncated_words` | yes | meaningful only when `response_truncated` is `true`; `null` otherwise |
+
+The parseltongue debug columns (`__original_prompt__`, `__original_response__`,
+`__transform__`) exist only on the intermediate pools (`train_weird_*.jsonl` —
+the combine step reads `__original_prompt__` to recover the original row index)
+and are dropped from the final file: the transform key is already in
+`encoding_type`, and the transformed text is in `prompt`/`response`.
+
 ## Usage
 
 ```bash
@@ -113,6 +140,10 @@ API key: `OPENROUTER_API_KEY` env var or `.env` file (both gitignored).
   `true`.
 - **Empty responses:** ~56% of wildguardtrain has no response; those rows get
   `response = ""` and we never let the model invent one.
+- **Schema consistency:** every dataset the pipeline writes is
+  schema-consistent (every row has every column; empty cells where a column
+  does not apply), enforced by `scripts/dataset_schema.py` and documented
+  under "Output schema (augmented.jsonl)" above.
 - **Silent refusals:** DeepSeek sometimes returns the source text unchanged
   instead of translating harmful content. The translator detects no-op
   translations (exact match or >85% token overlap) and routes them to

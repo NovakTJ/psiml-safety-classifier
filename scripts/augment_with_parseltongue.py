@@ -21,6 +21,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from dataset_schema import INTERMEDIATE_COLUMNS, normalize
+
 
 DEFAULT_TRANSFORMS = [
     "leetspeak",
@@ -245,6 +247,15 @@ def main(argv: list[str] | None = None) -> int:
             for name in field_names:
                 augmented[name] = outputs.get(name, "")
             augmented["encoding_type"] = item["transform"]
+            # Inherit provenance columns from the base row (language, original
+            # index, source split, model used, prompt template) so both pool
+            # files share one schema; normalize fills any remaining gaps with
+            # empty values.  See dataset_schema.py.
+            for col in ("language", "original_idx", "source_split",
+                        "translation_model", "prompt_template_version"):
+                if col in base:
+                    augmented[col] = base[col]
+            augmented = normalize(augmented, INTERMEDIATE_COLUMNS)
             # Inherit verification status: a transform of an unverified
             # translation is still unverified content.
             augmented["verified_accurate_description"] = base.get("verified_accurate_description", True)

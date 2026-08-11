@@ -27,6 +27,9 @@ from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+
+from dataset_schema import FINAL_COLUMNS, normalize  # noqa: E402
 
 # A "word" is any maximal run of non-whitespace.
 _WORD_RE = re.compile(r"\S+")
@@ -99,6 +102,12 @@ def main(argv: list[str] | None = None) -> int:
             line = line.strip()
             if line:
                 rows.append(json.loads(line))
+    # Enforce the canonical schema up front: every row carries every column
+    # (truncation columns default to False/None) and any legacy parseltongue
+    # debug columns (__original_prompt__ / __original_response__ / __transform__)
+    # are dropped, so the output stays consistent with what combine_dataset.py
+    # now produces.  See dataset_schema.py.
+    rows = [normalize(rec, FINAL_COLUMNS) for rec in rows]
     print(f"loaded {len(rows)} rows from {args.input}", file=sys.stderr)
 
     # --- verification: does every response have spaces between words? ---

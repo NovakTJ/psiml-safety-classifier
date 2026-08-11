@@ -23,6 +23,7 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
+from dataset_schema import FINAL_COLUMNS, normalize  # noqa: E402
 from translate_wildguard import load_and_sample  # noqa: E402
 
 PIPELINE_VERSION = "v1"
@@ -109,6 +110,10 @@ def main(argv: list[str] | None = None) -> int:
                 rec["language"] = "en"
             rec["augmentation_type"] = aug_type
             rec["row_id"] = f"weird-{prefix}-{idx}-{rec['encoding_type']}"
+            # Every pool row comes from the same source split / pipeline generation.
+            rec["source_split"] = "train"
+            rec["prompt_template_version"] = TEMPLATE_VERSION
+            rec["augmentation_pipeline_version"] = PIPELINE_VERSION
             pool.append(rec)
         return pool
 
@@ -145,6 +150,11 @@ def main(argv: list[str] | None = None) -> int:
     rows = originals + translated + weird
     if not args.no_shuffle:
         rng.shuffle(rows)
+
+    # Canonical schema for the training file: every row has every column
+    # (missing ones are filled with empty values) and the parseltongue debug
+    # columns (__original_prompt__ etc.) are dropped.  See dataset_schema.py.
+    rows = [normalize(rec, FINAL_COLUMNS) for rec in rows]
 
     with output.open("w", encoding="utf-8") as f:
         for rec in rows:
