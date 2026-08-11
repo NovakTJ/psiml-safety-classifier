@@ -16,19 +16,21 @@ scripts/run_pipeline.py          ← orchestrates both steps below (subprocess)
         │        ▼
         │      data/translated.jsonl                ← labels preserved
         │
-        └──► filter prompt_harm_label == harmful
+        └──► harmful prompts (English originals + translated)
                 │
                 ▼
         scripts/augment_with_parseltongue.py       ← P4RS3LT0NGV3 weird-char
                 │                                     transforms (Node bridge)
                 ▼
-        data/train_weird.jsonl                     ← one row per (harmful example,
-                                                     transform); labeled harmful
+        data/train_weird_en.jsonl                  ← one row per (harmful English
+        data/train_weird_tr.jsonl                    prompt, transform); labeled
+                                                     harmful
 
-        scripts/combine_dataset.py                 ← merges the three artifacts into
-                │                                     one clean training file
-                ▼
-        data/augmented.jsonl                       ← 17,198 rows (final dataset)
+        scripts/combine_dataset.py                 ← merges the artifacts into one
+                │                                     training file, sampling the
+                │                                     parseltongue pools down to
+                ▼                                     ~20% of the final dataset
+        data/augmented.jsonl                       ← final dataset
 ```
 
 ## Output schema (translated.jsonl)
@@ -66,12 +68,15 @@ Failures (refusals, unparseable JSON) go to `data/translation_failures.jsonl`, n
 .venv/bin/python scripts/run_pipeline.py --n-examples 1000 --model deepseek/deepseek-v4-flash-0731
 
 # merge everything into one clean training file (data/augmented.jsonl)
+#   parseltongue rows = --parseltongue-frac (default 0.20) of the final dataset
+#   EN/translated split within those rows is proportional to pool sizes
 .venv/bin/python scripts/combine_dataset.py
+.venv/bin/python scripts/combine_dataset.py --parseltongue-frac 0.1   # 10% instead
 
 # the two steps, run individually:
 .venv/bin/python scripts/translate_wildguard.py --n-examples 1000
-.venv/bin/python scripts/augment_with_parseltongue.py --input data/harmful_translated.jsonl --output data/train_weird.jsonl --text-col translated_prompt
-```
+.venv/bin/python scripts/augment_with_parseltongue.py --input data/harmful_translated.jsonl --output data/train_weird_tr.jsonl --text-col translated_prompt
+.venv/bin/python scripts/augment_with_parseltongue.py --input data/harmful_en.jsonl --output data/train_weird_en.jsonl --text-col prompt
 
 API key: `OPENROUTER_API_KEY` env var or `.env` file (both gitignored).
 
@@ -80,12 +85,16 @@ API key: `OPENROUTER_API_KEY` env var or `.env` file (both gitignored).
 - **Language assignment:** each example is translated exactly once, into a
   seeded-random language drawn from the 30-language pool (~33 examples per
   language for a 1k run). Pass `--languages es,hi` to restrict the pool.
-- **Labels:** translated rows keep the original labels. Weird-character rows are
-  generated from harmful examples only and labeled harmful (by design — obfuscation
-  is treated as an adversarial signal in production). `verified_accurate_description`
-  is `false` for LLM translations (need spot-checking). Parseltongue rows inherit
-  the flag from their source: transforms of unverified translations stay
-  unverified; a transform of an already-verified/raw row is marked true.
+- **Labels:** translated rows keep the original labels. Parseltongue pools are
+  generated from the harmful prompts only (English + translated combined) and
+  labeled harmful by design (obfuscation is treated as an adversarial signal in
+  production). The final dataset keeps only a sampled subset of each parseltongue
+  pool (default ~20% of the final file, `--parseltongue-frac`); nothing is
+  hardcoded to a specific run size, so the same pipeline works for >1k prompts.
+  `verified_accurate_description` is `false` for LLM translations (need
+  spot-checking). Parseltongue rows inherit the flag from their source: transforms
+  of unverified translations stay unverified; transforms of raw English rows are
+  `true`.
 - **Empty responses:** ~56% of wildguardtrain has no response; those rows get
   `translated_response = ""` and we never let the model invent one.
 - **Silent refusals:** DeepSeek sometimes returns the source text unchanged

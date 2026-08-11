@@ -3,17 +3,26 @@
 
 Step 1  sample N examples from wildguardmix, translate each ONCE into a random
         language  (scripts/translate_wildguard.py)
-Step 2  keep only the harmful rows from the translation output
-Step 3  obfuscate the harmful *translated* prompts with P4RS3LT0NGV3
-        weird-character transforms (scripts/augment_with_parseltongue.py);
-        those rows are labeled harmful by design.
+Step 2  collect the harmful prompts from BOTH sources: the English originals
+        (data/sample.jsonl) and the translated rows (data/translated.jsonl)
+Step 3  obfuscate all of those harmful prompts with P4RS3LT0NGV3 weird-character
+        transforms (scripts/augment_with_parseltongue.py); every row is labeled
+        harmful by design. The English prompts and the translated prompts are
+        obfuscated separately (different text column) into two pool files, which
+        is equivalent to running on the combined set.
+Step 4  combine everything into data/augmented.jsonl, sampling the parseltongue
+        pool down to --parseltongue-frac of the final dataset
+        (scripts/combine_dataset.py).
 
 Artifacts (all in data/, gitignored):
-    sample.jsonl            sampled original rows
-    translated.jsonl        one row per example (labels preserved)
-    harmful_translated.jsonl  filtered harmful subset of translated.jsonl
-    train_weird.jsonl       parseltongue obfuscations of harmful translated prompts
+    sample.jsonl               sampled original rows
+    translated.jsonl           one row per example (labels preserved)
+    harmful_en.jsonl           harmful subset of sample.jsonl (English)
+    harmful_translated.jsonl   harmful subset of translated.jsonl
+    train_weird_en.jsonl       parseltongue obfuscations of harmful English prompts
+    train_weird_tr.jsonl       parseltongue obfuscations of harmful translated prompts
     translation_failures.jsonl
+    augmented.jsonl            final combined dataset
 
 Usage
 -----
@@ -22,6 +31,9 @@ Usage
 
     # reuse an existing translated.jsonl (e.g. after a crash or a new run)
     .venv/bin/python scripts/run_pipeline.py --n-examples 1000 --skip-translate
+
+    # obfuscate a bigger target fraction of the final dataset
+    .venv/bin/python scripts/run_pipeline.py --skip-translate --parseltongue-frac 0.3
 
     # quick smoke test: 4 examples, languages drawn from {es, hi}
     .venv/bin/python scripts/run_pipeline.py --n-examples 4 --languages es,hi
@@ -55,6 +67,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Reuse the existing translated.jsonl instead of translating.")
     parser.add_argument("--skip-obfuscate", action="store_true",
                         help="Skip the parseltongue step.")
+    parser.add_argument("--parseltongue-frac", type=float, default=0.20,
+                        help="Target share of parseltongue rows in the final dataset "
+                             "(default: 0.20, i.e. ~20% of augmented.jsonl). "
+                             "Capped by the pool size; exact share is computed from "
+                             "actual row counts in combine_dataset.py, so nothing is "
+                             "hardcoded to the 1k run.")
+    parser.add_argument("--skip-combine", action="store_true",
+                        help="Skip the final combine step (run combine_dataset.py yourself).")
     parser.add_argument("--data-dir", type=Path, default=PROJECT_ROOT / "data")
     return parser.parse_args(argv)
 
@@ -83,10 +103,8 @@ def step_translate(args: argparse.Namespace, data_dir: Path) -> None:
     run(cmd)
 
 
-def step_filter_harmful(data_dir: Path) -> int:
-    """Keep harmful rows from translated.jsonl -> harmful_translated.jsonl."""
-    src = data_dir / "translated.jsonl"
-    dst = data_dir / "harmful_translated.jsonl"
+def step_filter_harmful(src: Path, dst: Path, text_col: str | None = None) -> int:
+    """Keep harmful rows from src -> dst (English or translated)."""
     kept = 0
     with src.open("r", encoding="utf-8") as fin, dst.open("w", encoding="utf-8") as fout:
         for line in fin:
@@ -98,35 +116,47 @@ def step_filter_harmful(data_dir: Path) -> int:
                 fout.write(line + "\n")
                 kept += 1
     print(f">> filtered: {kept} harmful rows -> {dst}", file=sys.stderr)
-    return kept
 
 
-def step_obfuscate(args: argparse.Namespace, data_dir: Path) -> None:
+def step_obfuscate(data_dir: Path, input_name: str, output_name: str, text_col: str) -> None:
     cmd = [
         sys.executable, "scripts/augment_with_parseltongue.py",
-        "--input", str(data_dir / "harmful_translated.jsonl"),
-        "--output", str(data_dir / "train_weird.jsonl"),
-        "--text-col", "translated_prompt",
+        "--input", str(data_dir / input_name),
+        "--output", str(data_dir / output_name),
+        "--text-col", text_col,
         "--force-harmful",
     ]
     run(cmd)
 
 
 def summarize(data_dir: Path) -> None:
-    weird = data_dir / "train_weird.jsonl"
-    if not weird.exists():
-        return
-    n = 0
-    langs: dict[str, int] = {}
-    transforms: dict[str, int] = {}
-    for line in weird.open("r", encoding="utf-8"):
-        rec = json.loads(line)
-        n += 1
-        langs[rec.get("language", "?")] = langs.get(rec.get("language", "?"), 0) + 1
-        transforms[rec["encoding_type"]] = transforms.get(rec["encoding_type"], 0) + 1
-    print(f"\nsummary: {n} obfuscated rows in {weird}", file=sys.stderr)
-    print("  languages:", dict(sorted(langs.items())), file=sys.stderr)
-    print(f"  distinct transforms: {len(transforms)} used", file=sys.stderr)
+    for pool in ("train_weird_en.jsonl", "train_weird_tr.jsonl"):
+        weird = data_dir / pool
+        if not weird.exists():
+            continue
+        n = 0
+        langs: dict[str, int] = {}
+        transforms: dict[str, int] = {}
+        for line in weird.open("r", encoding="utf-8"):
+            rec = json.loads(line)
+            n += 1
+            langs[rec.get("language", "?")] = langs.get(rec.get("language", "?"), 0) + 1
+            transforms[rec["encoding_type"]] = transforms.get(rec["encoding_type"], 0) + 1
+        print(f"\nsummary: {n} obfuscated rows in {weird}", file=sys.stderr)
+        print("  languages:", dict(sorted(langs.items())), file=sys.stderr)
+        print(f"  distinct transforms: {len(transforms)} used", file=sys.stderr)
+
+
+def step_combine(args: argparse.Namespace, data_dir: Path) -> None:
+    cmd = [
+        sys.executable, "scripts/combine_dataset.py",
+        "--data-dir", str(data_dir),
+        "--n-examples", str(args.n_examples),
+        "--harmful-frac", str(args.harmful_frac),
+        "--seed", str(args.seed),
+        "--parseltongue-frac", str(args.parseltongue_frac),
+    ]
+    run(cmd)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -138,12 +168,15 @@ def main(argv: list[str] | None = None) -> int:
         step_translate(args, data_dir)
 
     if not args.skip_obfuscate:
-        n_harmful = step_filter_harmful(data_dir)
-        if n_harmful == 0:
-            print("warning: no harmful rows in translated.jsonl; skipping obfuscation", file=sys.stderr)
-        else:
-            step_obfuscate(args, data_dir)
-            summarize(data_dir)
+        # Combined harmful set = harmful English originals + harmful translations.
+        step_filter_harmful(data_dir / "sample.jsonl", data_dir / "harmful_en.jsonl")
+        step_filter_harmful(data_dir / "translated.jsonl", data_dir / "harmful_translated.jsonl")
+        step_obfuscate(data_dir, "harmful_en.jsonl", "train_weird_en.jsonl", "prompt")
+        step_obfuscate(data_dir, "harmful_translated.jsonl", "train_weird_tr.jsonl", "translated_prompt")
+        summarize(data_dir)
+
+    if not args.skip_combine:
+        step_combine(args, data_dir)
     return 0
 
 
