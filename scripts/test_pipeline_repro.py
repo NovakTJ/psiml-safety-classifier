@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 """Reproducibility test: re-running the pipeline (--skip-translate) on the
-checked-in artifacts must reproduce (approximately) data/augmented.jsonl.
+checked-in artifacts must reproduce (approximately) data/complete_dataset.jsonl.
 
 What it does:
     1. Copies the translation artifacts (translated.jsonl, sample.jsonl) into a
        temp dir.
     2. Runs the full pipeline: run_pipeline.py --skip-translate --data-dir <tmp>
        (filter harmful -> parseltongue obfuscate -> combine -> truncate).
-    3. Compares <tmp>/augmented.jsonl against the committed data/augmented.jsonl:
+    3. Compares <tmp>/complete_dataset.jsonl against the committed data/complete_dataset.jsonl:
        same set of row_ids, and field-by-field equality ignoring volatile
        metadata (timestamps).
 
@@ -87,7 +87,7 @@ def strip_volatile(rec: dict) -> dict:
 
 
 def main() -> int:
-    for artifact in ("translated.jsonl", "sample.jsonl", "augmented.jsonl"):
+    for artifact in ("translated.jsonl", "sample.jsonl", "complete_dataset.jsonl"):
         if not (DATA_DIR / artifact).exists():
             raise SystemExit(f"missing required artifact: data/{artifact}")
 
@@ -98,8 +98,8 @@ def main() -> int:
 
         run_pipeline(tmp)
 
-        expected = load_rows(DATA_DIR / "augmented.jsonl")
-        actual = load_rows(tmp / "augmented.jsonl")
+        expected = load_rows(DATA_DIR / "complete_dataset.jsonl")
+        actual = load_rows(tmp / "complete_dataset.jsonl")
 
     # --- row-set comparison -------------------------------------------------
     missing = set(expected) - set(actual)
@@ -134,7 +134,7 @@ def main() -> int:
                   file=sys.stderr)
         return 1
 
-    print(f"OK: regenerated dataset matches data/augmented.jsonl exactly "
+    print(f"OK: regenerated dataset matches data/complete_dataset.jsonl exactly "
           f"({n_rows} rows, ignoring {sorted(VOLATILE_FIELDS)})")
     return 0
 

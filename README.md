@@ -38,7 +38,7 @@ scripts/run_pipeline.py          ← orchestrates both steps below (subprocess)
                 │                                     parseltongue pools down to
                 │                                     ~20% of the final dataset
                 ▼                                     (half of that prompt-only)
-        data/augmented.jsonl                       ← final dataset
+        data/complete_dataset.jsonl               ← final dataset
                 │
                 ▼
         scripts/truncate_responses.py              ← shorten ~60% of the rows with
@@ -46,7 +46,7 @@ scripts/run_pipeline.py          ← orchestrates both steps below (subprocess)
                                                      the classifier learns to fire on
                                                      half-finished generations
                 ▼
-        data/augmented.jsonl                       ← final dataset (truncated responses)
+        data/complete_dataset.jsonl               ← final dataset (truncated responses)
 ```
 
 ## Output schema (translated.jsonl)
@@ -69,7 +69,7 @@ place (no parallel column), plus:
 
 Failures (refusals, unparseable JSON) go to `data/translation_failures.jsonl`, never the main output.
 
-## Output schema (augmented.jsonl)
+## Output schema (complete_dataset.jsonl)
 
 The final training file is schema-consistent: every row — original, translation,
 obfuscation_en, obfuscation_tr, truncated or not — carries the same columns.
@@ -111,7 +111,7 @@ and are dropped from the final file: the transform key is already in
 # cheaper/faster model
 .venv/bin/python scripts/run_pipeline.py --n-examples 1000 --model deepseek/deepseek-v4-flash-0731
 
-# merge everything into one clean training file (data/augmented.jsonl)
+# merge everything into one clean training file (data/complete_dataset.jsonl)
 #   parseltongue rows = --parseltongue-frac (default 0.20) of the final dataset,
 #   half of them prompt-only (--prompt-only-share, default 0.5); then ~60% of
 #   the rows with responses get them truncated to a random prefix
@@ -119,7 +119,7 @@ and are dropped from the final file: the transform key is already in
 .venv/bin/python scripts/combine_dataset.py
 .venv/bin/python scripts/combine_dataset.py --parseltongue-frac 0.1   # 10% instead
 
-# truncation step alone (reuse a pre-built augmented.jsonl, no LLM calls)
+# truncation step alone (reuse a pre-built complete_dataset.jsonl, no LLM calls)
 .venv/bin/python scripts/truncate_responses.py
 .venv/bin/python scripts/truncate_responses.py --frac 0.5 --min-length 8  # tune
 
@@ -172,7 +172,7 @@ API key: `OPENROUTER_API_KEY` env var or `.env` file (both gitignored).
 - **Schema consistency:** every dataset the pipeline writes is
   schema-consistent (every row has every column; empty cells where a column
   does not apply), enforced by `scripts/dataset_schema.py` and documented
-  under "Output schema (augmented.jsonl)" above.
+  under "Output schema (complete_dataset.jsonl)" above.
 - **Silent refusals:** DeepSeek sometimes returns the source text unchanged
   instead of translating harmful content. The translator detects no-op
   translations (exact match or >85% token overlap) and routes them to

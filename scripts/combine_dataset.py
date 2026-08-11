@@ -39,7 +39,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--data-dir", type=Path, default=PROJECT_ROOT / "data")
     parser.add_argument("--output", type=Path, default=None,
-                        help="Output JSONL (default: data/augmented.jsonl).")
+                        help="Output JSONL (default: data/complete_dataset.jsonl).")
     parser.add_argument("--n-examples", type=int, default=1000)
     parser.add_argument("--harmful-frac", type=float, default=0.5)
     parser.add_argument("--seed", type=int, default=42)
@@ -101,7 +101,7 @@ def sample_from_pools(rng: random.Random, pools: list[list[dict[str, Any]]],
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     data_dir = args.data_dir
-    output = args.output or data_dir / "augmented.jsonl"
+    output = args.output or data_dir / "complete_dataset.jsonl"
     now = datetime.now(timezone.utc).isoformat()
 
     # Re-sample deterministically to recover original_idx for the raw rows.

@@ -9,7 +9,7 @@ dropping the key, so downstream loaders can use ``row[col]`` without
 
 Two schemas:
 
-* :data:`FINAL_COLUMNS` -- schema of ``data/augmented.jsonl`` (the training
+* :data:`FINAL_COLUMNS` -- schema of ``data/complete_dataset.jsonl`` (the training
   file).  The parseltongue debug columns (``__original_prompt__``,
   ``__original_response__``, ``__transform__``) are intentionally *not* part
   of it: they are only useful while building the intermediate pools (the

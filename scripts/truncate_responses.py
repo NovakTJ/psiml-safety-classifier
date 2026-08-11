@@ -13,7 +13,7 @@ never truncated again.
 
 Usage:
     .venv/bin/python scripts/truncate_responses.py \
-        --input data/augmented.jsonl --output data/augmented.jsonl
+        --input data/complete_dataset.jsonl --output data/complete_dataset.jsonl
 """
 
 from __future__ import annotations
@@ -37,8 +37,8 @@ _WORD_RE = re.compile(r"\S+")
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    parser.add_argument("--input", type=Path, default=PROJECT_ROOT / "data" / "augmented.jsonl")
-    parser.add_argument("--output", type=Path, default=PROJECT_ROOT / "data" / "augmented.jsonl")
+    parser.add_argument("--input", type=Path, default=PROJECT_ROOT / "data" / "complete_dataset.jsonl")
+    parser.add_argument("--output", type=Path, default=PROJECT_ROOT / "data" / "complete_dataset.jsonl")
     parser.add_argument("--frac", type=float, default=0.6,
                         help="Share of rows with a response to truncate (default: 0.6).")
     parser.add_argument("--min-length", type=int, default=10,

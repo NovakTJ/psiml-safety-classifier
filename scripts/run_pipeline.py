@@ -16,7 +16,7 @@ Step 3  obfuscate all of those harmful rows with P4RS3LT0NGV3 weird-character
         Every row is labeled harmful by design. The English rows and the
         translated rows are obfuscated separately, giving four pool files,
         which is equivalent to running on the combined set.
-Step 4  combine everything into data/augmented.jsonl, sampling the parseltongue
+Step 4  combine everything into data/complete_dataset.jsonl, sampling the parseltongue
         pool down to --parseltongue-frac of the final dataset
         (scripts/combine_dataset.py).
 Step 5  truncate the responses of a random ~60% of the rows that have one, so
@@ -34,7 +34,7 @@ Artifacts (all in data/, gitignored):
     train_weird_promptonly_en.jsonl   same, prompt obfuscated only / plain response
     train_weird_promptonly_tr.jsonl   same, prompt obfuscated only / plain response
     translation_failures.jsonl
-    augmented.jsonl            final combined dataset (with truncated responses)
+    complete_dataset.jsonl     final combined dataset (with truncated responses)
 
 Usage
 -----
@@ -146,8 +146,8 @@ def step_obfuscate(data_dir: Path, input_name: str, output_name: str,
 def step_truncate(args: argparse.Namespace, data_dir: Path) -> None:
     cmd = [
         sys.executable, "scripts/truncate_responses.py",
-        "--input", str(data_dir / "augmented.jsonl"),
-        "--output", str(data_dir / "augmented.jsonl"),
+        "--input", str(data_dir / "complete_dataset.jsonl"),
+        "--output", str(data_dir / "complete_dataset.jsonl"),
         "--frac", str(args.truncate_frac),
         "--min-length", str(args.truncate_min_length),
         "--seed", str(args.seed),
