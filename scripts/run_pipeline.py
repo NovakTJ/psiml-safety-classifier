@@ -6,11 +6,16 @@ Step 1  sample N examples from wildguardmix, translate each ONCE into a random
 Step 2  collect the harmful prompts from BOTH sources: the English originals
         (data/sample.jsonl) and the translated rows (data/translated.jsonl)
 Step 3  obfuscate all of those harmful rows with P4RS3LT0NGV3 weird-character
-        transforms (scripts/augment_with_parseltongue.py); every selected row
-        gets the same transform applied to BOTH its prompt and its response, and
-        is labeled harmful by design. The English rows and the translated rows
-        are obfuscated separately into two pool files, which is equivalent to
-        running on the combined set.
+        transforms (scripts/augment_with_parseltongue.py), in TWO modes:
+          a) prompt AND response get the same transform (the model speaks
+             parseltongue back -- the case to catch when an attacker makes the
+             model encode harmful output),
+          b) prompt ONLY gets the transform, the response stays plain text
+             (the dominant real-life case: models almost never mirror zalgo /
+             leetspeak, especially when refusing).
+        Every row is labeled harmful by design. The English rows and the
+        translated rows are obfuscated separately, giving four pool files,
+        which is equivalent to running on the combined set.
 Step 4  combine everything into data/augmented.jsonl, sampling the parseltongue
         pool down to --parseltongue-frac of the final dataset
         (scripts/combine_dataset.py).
@@ -24,8 +29,10 @@ Artifacts (all in data/, gitignored):
     translated.jsonl           one row per example (labels preserved)
     harmful_en.jsonl           harmful subset of sample.jsonl (English)
     harmful_translated.jsonl   harmful subset of translated.jsonl
-    train_weird_en.jsonl       parseltongue obfuscations of harmful English prompts
-    train_weird_tr.jsonl       parseltongue obfuscations of harmful translated prompts
+    train_weird_en.jsonl       parseltongue obfuscations of harmful English rows (prompt+response)
+    train_weird_tr.jsonl       parseltongue obfuscations of harmful translated rows (prompt+response)
+    train_weird_promptonly_en.jsonl   same, prompt obfuscated only / plain response
+    train_weird_promptonly_tr.jsonl   same, prompt obfuscated only / plain response
     translation_failures.jsonl
     augmented.jsonl            final combined dataset (with truncated responses)
 
@@ -69,6 +76,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--parseltongue-frac", type=float, default=0.20,
                         help="Target share of parseltongue rows in the final dataset "
                              "(default: 0.20; capped by the pool size).")
+    parser.add_argument("--prompt-only-share", type=float, default=0.5,
+                        help="Share of the parseltongue budget given to prompt-only "
+                             "rows (obfuscated prompt, plain response; default: 0.5).")
     parser.add_argument("--skip-combine", action="store_true",
                         help="Skip the final combine step (run combine_dataset.py yourself).")
     parser.add_argument("--skip-truncate", action="store_true",
@@ -120,11 +130,14 @@ def step_filter_harmful(src: Path, dst: Path) -> int:
     print(f">> filtered: {kept} harmful rows -> {dst}", file=sys.stderr)
 
 
-def step_obfuscate(data_dir: Path, input_name: str, output_name: str) -> None:
+def step_obfuscate(data_dir: Path, input_name: str, output_name: str,
+                   fields: str = "prompt,response", note: str = "parseltongue") -> None:
     cmd = [
         sys.executable, "scripts/augment_with_parseltongue.py",
         "--input", str(data_dir / input_name),
         "--output", str(data_dir / output_name),
+        "--fields", fields,
+        "--note", note,
         "--force-harmful",
     ]
     run(cmd)
@@ -142,8 +155,16 @@ def step_truncate(args: argparse.Namespace, data_dir: Path) -> None:
     run(cmd)
 
 
+POOL_FILES = (
+    "train_weird_en.jsonl",
+    "train_weird_tr.jsonl",
+    "train_weird_promptonly_en.jsonl",
+    "train_weird_promptonly_tr.jsonl",
+)
+
+
 def summarize(data_dir: Path) -> None:
-    for pool in ("train_weird_en.jsonl", "train_weird_tr.jsonl"):
+    for pool in POOL_FILES:
         weird = data_dir / pool
         if not weird.exists():
             continue
@@ -168,6 +189,7 @@ def step_combine(args: argparse.Namespace, data_dir: Path) -> None:
         "--harmful-frac", str(args.harmful_frac),
         "--seed", str(args.seed),
         "--parseltongue-frac", str(args.parseltongue_frac),
+        "--prompt-only-share", str(args.prompt_only_share),
     ]
     run(cmd)
 
@@ -186,6 +208,11 @@ def main(argv: list[str] | None = None) -> int:
         step_filter_harmful(data_dir / "translated.jsonl", data_dir / "harmful_translated.jsonl")
         step_obfuscate(data_dir, "harmful_en.jsonl", "train_weird_en.jsonl")
         step_obfuscate(data_dir, "harmful_translated.jsonl", "train_weird_tr.jsonl")
+        # Prompt-only pools: plain responses, the common real-life case.
+        step_obfuscate(data_dir, "harmful_en.jsonl", "train_weird_promptonly_en.jsonl",
+                       fields="prompt", note="parseltongue_prompt_only")
+        step_obfuscate(data_dir, "harmful_translated.jsonl", "train_weird_promptonly_tr.jsonl",
+                       fields="prompt", note="parseltongue_prompt_only")
         summarize(data_dir)
 
     if not args.skip_combine:

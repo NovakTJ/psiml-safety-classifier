@@ -5,10 +5,18 @@ Calls the P4RS3LT0NGV3 transforms (vendor/, requires Node.js) through a Node
 bridge. Produces one variant per (example, transform); every selected column
 (default: prompt AND response) gets the SAME transform.
 
+With --fields prompt only the prompt is obfuscated and the response is kept
+verbatim (labels included). That mirrors the dominant real-life case: models
+almost never mirror zalgo/leetspeak in their output, especially when
+refusing, so a parseltongue prompt typically gets a plain-text response.
+
 Usage:
     .venv/bin/python scripts/augment_with_parseltongue.py --list-transforms
     .venv/bin/python scripts/augment_with_parseltongue.py \
         --input data/harmful_en.jsonl --output data/train_weird_en.jsonl
+    .venv/bin/python scripts/augment_with_parseltongue.py \
+        --input data/harmful_en.jsonl --fields prompt --note parseltongue_prompt_only \
+        --output data/train_weird_promptonly_en.jsonl
 """
 
 from __future__ import annotations
@@ -142,6 +150,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
              'treated as empty strings.',
     )
     parser.add_argument(
+        "--note",
+        default="parseltongue",
+        help='Note appended to every output row (default: "parseltongue"; the '
+             'prompt-only pools use "parseltongue_prompt_only").',
+    )
+    parser.add_argument(
         "--id-col",
         default=None,
         help='Column to use as example id. If omitted, rows are numbered.',
@@ -264,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.force_harmful:
                 augmented["prompt_harm_label"] = "harmful"
             base_notes = base.get("notes") or ""
-            augmented["notes"] = ";".join(filter(None, [base_notes, "parseltongue"]))
+            augmented["notes"] = ";".join(filter(None, [base_notes, args.note]))
             out_records.append(augmented)
 
     write_jsonl(args.output, out_records)

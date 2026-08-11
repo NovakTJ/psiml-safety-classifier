@@ -2,9 +2,14 @@
 """Combine the augmentation artifacts into one training JSONL.
 
 Categories: original (sampled English rows), translation (translated.jsonl),
-obfuscation_en / obfuscation_tr (parseltongue pools). The parseltongue pools
-are sampled down to --parseltongue-frac of the final dataset, split
-proportionally to pool sizes. Failed translations simply never appear.
+obfuscation_en / obfuscation_tr (parseltongue pools, prompt AND response
+transformed) and obfuscation_promptonly_en / _tr (prompt transformed, plain
+response -- the dominant real-life case, since models answer parseltongue
+prompts in plain text, especially when refusing). The parseltongue pools are
+sampled down to --parseltongue-frac of the final dataset, with
+--prompt-only-share of that budget going to the prompt-only pools; within a
+group the split is proportional to pool sizes and whatever a group cannot
+fill rolls over to the other group. Failed translations simply never appear.
 
 Usage:
     .venv/bin/python scripts/combine_dataset.py --parseltongue-frac 0.1
@@ -42,6 +47,9 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         help="Target share of obfuscation rows in the final dataset "
                              "(default: 0.20). Exact count is computed from the actual "
                              "base size: P = B * frac / (1 - frac).")
+    parser.add_argument("--prompt-only-share", type=float, default=0.5,
+                        help="Share of the parseltongue budget given to prompt-only "
+                             "rows (obfuscated prompt, plain response; default: 0.5).")
     parser.add_argument("--no-shuffle", action="store_true",
                         help="Keep rows grouped by augmentation_type instead of shuffling.")
     return parser.parse_args(argv)
@@ -62,6 +70,32 @@ def enrich_original(idx: int, rec: dict[str, Any], now: str) -> dict[str, Any]:
     out["verified_accurate_description"] = True  # raw dataset text/labels, nothing transformed
     out["notes"] = ""
     return out
+
+
+def sample_from_pools(rng: random.Random, pools: list[list[dict[str, Any]]],
+                      target: int) -> list[dict[str, Any]]:
+    """Sample ~target rows from a list of pools, proportional to pool sizes.
+
+    Keeps every row when target >= the total pool size; returns [] for
+    target <= 0. Rounding drift is fixed by topping up from (or trimming back
+    to) the unsampled leftovers.
+    """
+    avail = sum(len(pool) for pool in pools)
+    if target >= avail:
+        return [rec for pool in pools for rec in pool]
+    if target <= 0:
+        return []
+    sampled: list[dict[str, Any]] = []
+    for pool in pools:
+        share = min(int(round(target * len(pool) / avail)), len(pool))
+        sampled.extend(rng.sample(pool, share))
+    drift = target - len(sampled)
+    if drift > 0:
+        leftovers = [rec for pool in pools for rec in pool if rec not in sampled]
+        sampled.extend(rng.sample(leftovers, min(drift, len(leftovers))))
+    elif drift < 0:
+        sampled = rng.sample(sampled, len(sampled) + drift)
+    return sampled
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -120,32 +154,30 @@ def main(argv: list[str] | None = None) -> int:
     originals = [enrich_original(idx, rec, now) for idx, rec in zip(selected, records)]
     orig_by_prompt = {rec["prompt"]: idx for idx, rec in zip(selected, records)}
 
-    pools = [
-        ("train_weird_en.jsonl", "obfuscation_en", "en", load_pool("train_weird_en.jsonl", "obfuscation_en", "en")),
-        ("train_weird_tr.jsonl", "obfuscation_tr", "tr", load_pool("train_weird_tr.jsonl", "obfuscation_tr", "tr")),
+    both_pools = [
+        load_pool("train_weird_en.jsonl", "obfuscation_en", "en"),
+        load_pool("train_weird_tr.jsonl", "obfuscation_tr", "tr"),
+    ]
+    promptonly_pools = [
+        load_pool("train_weird_promptonly_en.jsonl", "obfuscation_promptonly_en", "poen"),
+        load_pool("train_weird_promptonly_tr.jsonl", "obfuscation_promptonly_tr", "potr"),
     ]
 
     rng = random.Random(args.seed)
     n_base = len(originals) + len(translated)
     target = int(round(n_base * args.parseltongue_frac / (1.0 - args.parseltongue_frac)))
-    avail = sum(len(pool) for _, _, _, pool in pools)
-    if target >= avail:
-        print(f"info: target {target} parseltongue rows exceeds pool ({avail}); keeping all", file=sys.stderr)
-        weird = [rec for _, _, _, pool in pools for rec in pool]
-    elif target <= 0:
-        weird = []
-    else:
-        weird = []
-        for name, aug_type, prefix, pool in pools:
-            share = int(round(target * len(pool) / avail)) if avail else 0
-            share = min(share, len(pool))
-            weird.extend(rng.sample(pool, share))
-        drift = target - len(weird)
-        if drift > 0:
-            leftovers = [rec for _, _, _, pool in pools for rec in pool if rec not in weird]
-            weird.extend(rng.sample(leftovers, min(drift, len(leftovers))))
-        elif drift < 0:
-            weird = rng.sample(weird, len(weird) + drift)
+
+    po_target = int(round(target * args.prompt_only_share))
+    weird_po = sample_from_pools(rng, promptonly_pools, po_target)
+    # Whatever the prompt-only pools could not fill rolls over to the
+    # prompt+response pools (and vice versa would need both groups exhausted,
+    # in which case we just keep everything).
+    weird_both = sample_from_pools(rng, both_pools, target - len(weird_po))
+    weird = weird_po + weird_both
+    avail = sum(len(p) for p in both_pools + promptonly_pools)
+    if len(weird) < target:
+        print(f"info: target {target} parseltongue rows exceeds pool ({avail}); keeping all",
+              file=sys.stderr)
 
     rows = originals + translated + weird
     if not args.no_shuffle:
@@ -165,11 +197,14 @@ def main(argv: list[str] | None = None) -> int:
     by_label = Counter(r["prompt_harm_label"] for r in rows)
     n_langs = len({r["language"] for r in rows})
     n_weird = by_type["obfuscation_en"] + by_type["obfuscation_tr"]
+    n_weird_po = by_type["obfuscation_promptonly_en"] + by_type["obfuscation_promptonly_tr"]
     print(f"wrote {len(rows)} rows -> {output}", file=sys.stderr)
     print(f"  by type:     {dict(by_type)}", file=sys.stderr)
     print(f"  by label:    {dict(by_label)}", file=sys.stderr)
     print(f"  languages:   {n_langs}", file=sys.stderr)
-    print(f"  parseltongue share: {n_weird}/{len(rows)} = {n_weird/len(rows):.1%}", file=sys.stderr)
+    print(f"  parseltongue share: {n_weird + n_weird_po}/{len(rows)} "
+          f"= {(n_weird + n_weird_po)/len(rows):.1%} "
+          f"(prompt+response: {n_weird}, prompt-only: {n_weird_po})", file=sys.stderr)
     return 0
 
 
