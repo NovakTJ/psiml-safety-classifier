@@ -1,1 +1,6 @@
 .venv/
+vendor/
+.env
+data/
+*.log
+__pycache__/
