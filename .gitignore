@@ -33,3 +33,6 @@ ccpp_env/
 .ssh/
 .virtual_documents/
 .vscode-server/
+
+# Local agent context file
+CLAUDE.md
