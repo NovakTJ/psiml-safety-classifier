@@ -38,3 +38,12 @@ ccpp_env/
 
 # Local agent context file
 CLAUDE.md
+
+# Model-eval artifacts (LoRA adapters, checkpoints, metrics CSVs) — too large for git
+# (the Aug-12 Gemma LoRA pilot alone is ~251 MB of optimizer state).
+# REPORT.md narrative summaries ARE tracked (a few KB each, the hand-off artifact).
+# Needs all three lines: git cannot re-include a file whose parent dir is excluded,
+# so we exclude the *contents*, keep directories walkable, then re-include REPORT.md.
+scripts/model/results/**
+!scripts/model/results/**/
+!scripts/model/results/**/REPORT.md
