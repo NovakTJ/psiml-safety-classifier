@@ -107,8 +107,12 @@ def main():
         for row_id, subcat, harmful_prompt in selected:
             for tpl in TEMPLATES:
                 messages = build_messages(tpl["id"], harmful_prompt)
+                # enable_thinking=False is REQUIRED: Qwen3.5's chat template
+                # defaults to thinking mode, which burns the token budget on
+                # CoT and contaminates the visible response (see CLAUDE.md).
                 text = tokenizer.apply_chat_template(
-                    messages, tokenize=False, add_generation_prompt=True)
+                    messages, tokenize=False, add_generation_prompt=True,
+                    enable_thinking=False)
                 inputs = tokenizer(text, return_tensors="pt").to(model.device)
                 with torch.inference_mode():
                     gen = model.generate(

@@ -29,7 +29,9 @@ ccpp_env/
 .jupyter/
 .local/
 .mozilla/
+.npm/
 .nv/
+.pi/
 .ssh/
 .virtual_documents/
 .vscode-server/
