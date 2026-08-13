@@ -1,7 +1,8 @@
 # aegis-chat — usage
 
 Guarded chat with Qwen3.5-9B (OpenRouter) watched by the Gemma-3-1B LoRA
-exchange classifier, with mid-stream blocking. Spec: `PLAN.md`. Engine: `core.py`.
+exchange classifier, with prompt pre-screening and mid-stream blocking.
+Spec: `PLAN.md`. Engine: `core.py`.
 
 ## Setup (off-cluster: laptop / GCP VM)
 
@@ -42,6 +43,7 @@ REPL slash commands: `/reset /thinking on|off /threshold F /check-every N
 Key flags (full list: `--help`): `--adapter PATH|none` (none = bare zero-shot
 Gemma), `--guard-prompt '...'|@file`, `--model OPENROUTER_ID` (default
 `qwen/qwen3.5-9b`), `--threshold`, `--check-every`, `--thinking on|off`,
+`--no-precheck` (disable the token-0 prompt pre-check — ablation knob),
 `--log-dir`. See PLAN.md "Expected-to-change pieces" for why these are knobs.
 
 Session logs: one JSONL per session in `psiml_data/redteam_sessions/`
@@ -74,6 +76,17 @@ $PY scripts/redteam/aegis/tests/debug_kv.py                # fp32 exactness proo
 
 ## Implementation notes (why it looks like this)
 
+- **Token-0 pre-check:** every turn is first classified with an EMPTY
+  response, before the target model is ever called (one guard forward over the
+  primed prefix + suffix — the KV cache is already warm from `begin_turn`). A
+  harmful prompt blocks here: no OpenRouter call, no generated tokens, no API
+  spend. Verified live: pipe-bomb prompt → p≈1.0 at token 0; soup prompt →
+  p≈2.5e-8, turn proceeds. Mid-stream checks still matter for response-side
+  harm that only appears once generation starts (the "$x example"). The
+  training rule covers this case ("bad prompt + no response ⇒ HARMFUL"), and
+  on v2 data `final_label == prompt_harm_label` on every row, so the guard is
+  largely a prompt classifier anyway — the pre-check is where most of its
+  blocking power lands. `--no-precheck` disables it for ablations.
 - **Score = softmax over first-token logits** (`harm` vs `un`) — identical
   decision to the sweep's greedy generation, thresholdable from one forward.
 - **KV reuse:** the real cache holds exactly prefix + response-so-far; each

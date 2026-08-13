@@ -355,13 +355,16 @@ class GuardedSession:
     def __init__(self, adapter=None, device=None, thinking=False,
                  check_every=50, threshold=0.5, temperature=1.0, max_tokens=3072,
                  log_dir=DEFAULT_LOG_DIR, api_key=None, guard=None, logger=None,
-                 model=None, guard_prompt=None):
+                 model=None, guard_prompt=None, precheck=True):
         self.guard = guard or GemmaGuard(adapter=adapter, device=device,
                                          guard_prompt=guard_prompt)
         self.model_id = model or MODEL_ID
         self.thinking = thinking
         self.check_every = check_every
         self.threshold = threshold
+        # Token-0 pre-check: classify the prompt (empty response) BEFORE the
+        # target model is ever called. Disable only for ablations.
+        self.precheck = precheck
         self.temperature = temperature
         self.max_tokens = max_tokens
         self._api_key = api_key or os.environ.get("OPENROUTER_API_KEY")
@@ -386,6 +389,7 @@ class GuardedSession:
             "thinking": self.thinking,
             "check_every": self.check_every,
             "threshold": self.threshold,
+            "precheck": self.precheck,
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
             "adapter": getattr(self.guard, "adapter_path", None),
@@ -425,6 +429,43 @@ class GuardedSession:
             yield {"type": "error", "message": f"guard init failed: {e!r}"}
             self.messages.pop()
             return
+
+        # Token-0 pre-check: classify the prompt with an EMPTY response
+        # before the target model is called at all. The guard was trained on
+        # prompt+response exchanges under the rule "harmful prompt + no
+        # response => HARMFUL" (and on v2 data final_label == prompt_harm_label
+        # on every row, so the classifier is largely a prompt classifier
+        # anyway), so a blatantly harmful prompt fires here and we never spend
+        # an OpenRouter call or generate a single token. Mid-stream checks
+        # still matter for response-side harm (the "$x example").
+        if self.precheck:
+            try:
+                p, n_tok, ms = self.guard.check_incremental("")
+            except Exception as e:
+                yield {"type": "error", "message": f"pre-check failed: {e!r}"}
+                self.messages.pop()
+                return
+            checks.append({"n_tokens": n_tok, "p_harmful": p, "ms": ms})
+            self._record_check(p, ms)
+            yield {"type": "check", "n_tokens": n_tok, "p_harmful": p,
+                   "ms": round(ms, 1)}
+            if p >= self.threshold:
+                self._blocks += 1
+                self.messages.append({
+                    "role": "assistant",
+                    "content": block_notice(n_tok),
+                })
+                verdict = {
+                    "blocked": True,
+                    "p_harmful": p,
+                    "n_tokens": n_tok,
+                    "finish_reason": "blocked",
+                    "partial_response": "",
+                }
+                self._log_turn(user_message, "", "", checks, verdict,
+                               self.messages)
+                yield {"type": "verdict", **verdict}
+                return
 
         try:
             stream = self._open_stream()

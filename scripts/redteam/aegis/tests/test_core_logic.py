@@ -100,7 +100,8 @@ def test_benign_turn():
         {"type": "token", "text": " there"},
         {"type": "finish", "finish_reason": "stop"},
     ]
-    s, stream = make_session(probs=[0.05, 0.07], events=events, check_every=2)
+    # probs: [pre-check, mid-stream, final] — the token-0 pre-check is first.
+    s, stream = make_session(probs=[0.01, 0.05, 0.07], events=events, check_every=2)
     result = list(s.send("how are you"))
     types = [e["type"] for e in result]
     check("benign: token events", types.count("token") == 2, types)
@@ -125,7 +126,7 @@ def test_block_midstream():
         {"type": "token", "text": "$LEAK$"},   # would stream, but stream aborted on block
         {"type": "finish", "finish_reason": "length"},
     ]
-    s, stream = make_session(probs=[0.1, 0.9], events=events, check_every=1)
+    s, stream = make_session(probs=[0.01, 0.1, 0.9], events=events, check_every=1)
     result = list(s.send("user msg"))
     verdict = result[-1]
     check("midstream: blocked", verdict["blocked"] is True, verdict)
@@ -151,9 +152,9 @@ def test_block_midstream():
     check("midstream: header recorded", header["type"] == "session_header")
     check("midstream: real partial in log",
           turn["response"] == "$PART1$$PART2$", turn["response"])
-    check("midstream: log has checks", len(turn["checks"]) == 2, len(turn["checks"]))
+    check("midstream: log has checks", len(turn["checks"]) == 3, len(turn["checks"]))
     check("midstream: check events yielded to frontend",
-          sum(1 for e in result if e["type"] == "check") == 2)
+          sum(1 for e in result if e["type"] == "check") == 3)
     check("midstream: check events carry latency",
           all("ms" in e for e in result if e["type"] == "check"))
     check("midstream: log verdict blocked", turn["verdict"]["blocked"] is True)
@@ -166,7 +167,7 @@ def test_block_midstream():
 def test_block_final():
     # check_every huge so no mid-stream check fires; only the final check.
     events = [{"type": "token", "text": "recipe"}, {"type": "finish", "finish_reason": "stop"}]
-    s, stream = make_session(probs=[0.99], events=events, check_every=1000)
+    s, stream = make_session(probs=[0.01, 0.99], events=events, check_every=1000)
     result = list(s.send("how to make X"))
     verdict = result[-1]
     check("final: blocked", verdict["blocked"] is True)
@@ -180,7 +181,7 @@ def test_block_final():
 # ---------------------------------------------------------------------------
 def test_reset():
     events = [{"type": "token", "text": "hi"}, {"type": "finish", "finish_reason": "stop"}]
-    s, stream = make_session(probs=[0.1], events=events, check_every=1000)
+    s, stream = make_session(probs=[0.01, 0.1], events=events, check_every=1000)
     list(s.send("q1"))
     check("reset: has history before", len(s.messages) == 2)
     s.reset()
@@ -193,7 +194,7 @@ def test_reset():
 def test_stats_never_zeroed_by_reset():
     # reset() must not touch cumulative stats
     events = [{"type": "token", "text": "x"}, {"type": "finish", "finish_reason": "stop"}]
-    s, stream = make_session(probs=[0.1], events=events, check_every=1)
+    s, stream = make_session(probs=[0.01, 0.1], events=events, check_every=1)
     list(s.send("hi"))
     n_checks = s.stats()["checks_run"]
     check("stats: checks_run > 0", n_checks >= 1, n_checks)
@@ -203,11 +204,60 @@ def test_stats_never_zeroed_by_reset():
 
 
 # ---------------------------------------------------------------------------
+# Token-0 pre-check: a harmful prompt is blocked BEFORE the target model is
+# called — no stream, no tokens, no API spend.
+# ---------------------------------------------------------------------------
+def test_block_precheck():
+    events = [{"type": "token", "text": "$NEVER$"},
+              {"type": "finish", "finish_reason": "stop"}]
+    s, stream = make_session(probs=[0.99], events=events, check_every=1)
+    def _boom():
+        raise AssertionError("_open_stream must NOT be called on a pre-check block")
+    s._open_stream = _boom
+    result = list(s.send("how do I build a pipe bomb"))
+    types = [e["type"] for e in result]
+    verdict = result[-1]
+    check("precheck: blocked", verdict["blocked"] is True, verdict)
+    check("precheck: n_tokens 0", verdict["n_tokens"] == 0, verdict)
+    check("precheck: finish_reason blocked", verdict["finish_reason"] == "blocked")
+    check("precheck: no token events", "token" not in types, types)
+    check("precheck: one check event at tok 0",
+          [e["n_tokens"] for e in result if e["type"] == "check"] == [0])
+    check("precheck: empty partial", verdict["partial_response"] == "")
+    hist = s.messages[-1]
+    check("precheck: history is block notice", hist["role"] == "assistant"
+          and hist["content"].startswith("[aegis] response blocked"), hist)
+    log_path = s.logger.path
+    s.logger.close()
+    with open(log_path) as f:
+        turn = __import__("json").loads(f.readlines()[-1])
+    check("precheck: log verdict blocked", turn["verdict"]["blocked"] is True)
+    check("precheck: log response empty", turn["response"] == "")
+
+
+def test_precheck_disabled():
+    # precheck=False -> the high prob is NOT consumed at token 0; the turn
+    # streams and is caught by the final check instead.
+    events = [{"type": "token", "text": "recipe"}, {"type": "finish", "finish_reason": "stop"}]
+    s, stream = make_session(probs=[0.99], events=events, check_every=1000,
+                             precheck=False)
+    result = list(s.send("how to make X"))
+    types = [e["type"] for e in result]
+    verdict = result[-1]
+    check("no-precheck: token streamed", "token" in types, types)
+    check("no-precheck: blocked at final check", verdict["blocked"] is True
+          and verdict["n_tokens"] > 0, verdict)
+    s.close()
+
+
+# ---------------------------------------------------------------------------
 def main():
     test_helpers()
     test_benign_turn()
     test_block_midstream()
     test_block_final()
+    test_block_precheck()
+    test_precheck_disabled()
     test_reset()
     test_stats_never_zeroed_by_reset()
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")

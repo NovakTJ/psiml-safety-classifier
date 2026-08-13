@@ -190,6 +190,10 @@ def main():
     ap.add_argument("--thinking", choices=["on", "off"], default="off")
     ap.add_argument("--check-every", type=int, default=50)
     ap.add_argument("--threshold", type=float, default=0.5)
+    ap.add_argument("--no-precheck", action="store_true",
+                    help="disable the token-0 prompt pre-check (ablation knob; "
+                         "default: pre-check ON — harmful prompts are blocked "
+                         "before the target model is ever called)")
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--max-tokens", type=int, default=3072)
     ap.add_argument("--log-dir", default=DEFAULT_LOG_DIR)
@@ -211,7 +215,8 @@ def main():
         adapter=args.adapter, device=args.device, thinking=args.thinking == "on",
         check_every=args.check_every, threshold=args.threshold,
         temperature=args.temperature, max_tokens=args.max_tokens,
-        log_dir=args.log_dir, model=args.model, guard_prompt=guard_prompt)
+        log_dir=args.log_dir, model=args.model, guard_prompt=guard_prompt,
+        precheck=not args.no_precheck)
     try:
         if args.jsonl:
             jsonl_mode(session)
