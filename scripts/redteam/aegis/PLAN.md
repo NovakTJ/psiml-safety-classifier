@@ -1,6 +1,10 @@
 # AEGIS — guarded-chat interface for red-teaming the Gemma classifier
 
-Status: **PLANNED, not implemented** (spec written 2026-08-13; implementation next).
+Status: **IN PROGRESS** (spec 2026-08-13; `core.py` + `tests/` implemented same day,
+`cli.py` next). Serving architecture decided 2026-08-13: **the web server is how
+red-teamers get access (a URL — no repo clones, no local deps), hosted off-cluster**
+(laptop for ad-hoc, GCP VM for the stable shared instance), NOT in this container —
+see "Hosting reality" under Frontend 2.
 
 AEGIS is the interface layer for red-teaming our exchange classifier in a realistic
 deployment shape: a human (or an agent) has a normal multi-turn conversation with
@@ -19,6 +23,8 @@ material for the v3 multi-turn dataset.
 - GPU constraint at time of writing: teammate is finetuning on the A100, so the
   **target model is served by OpenRouter** and only the 1B guard runs locally
   (~3 GB bf16; ~19.6 GB was free alongside the teammate's run when spec'd).
+  Side benefit: this makes the whole stack **portable off-cluster** (1B guard +
+  API target), which is what enables the laptop-hosted web demo below.
 
 ## Layout
 
@@ -27,13 +33,15 @@ scripts/redteam/aegis/
 ├── PLAN.md    # this file
 ├── core.py    # the engine — no terminal/HTTP assumptions
 ├── cli.py     # frontend 1: "aegis-chat"  (human REPL + machine-readable stdio mode)
+├── web.py     # frontend 2: FastAPI+WS web server — the shareable demo (off-cluster host)
 └── README.md  # usage (written with the implementation)
 psiml_data/redteam_sessions/   # session logs (one JSONL per session; gitignored if large)
 ```
 
-Deferred (do NOT build yet, but design doesn't preclude them — see "Future frontends"):
-`proxy.py` (OpenAI-compatible endpoint so pi can use guarded Qwen3.5 as its brain) and
-`web.py` (browser frontend).
+Build order: `core.py` → `cli.py` (proves the engine, is also the agent/test harness)
+→ `web.py` (the teammate-facing demo). Deferred (do NOT build yet, but the design
+doesn't preclude it — see "Future frontends"): `proxy.py` (OpenAI-compatible
+endpoint so pi can use guarded Qwen3.5 as its brain).
 
 ## Environment & hard requirements
 
@@ -166,28 +174,84 @@ Two modes:
   between lines, exits on EOF. This is how a **coding agent red-teams AEGIS**:
   `subprocess.Popen([...], stdin=PIPE, stdout=PIPE)` and converse. Also our test harness.
 
-## Frontend 2 (future, spec'd now): web server
+## Frontend 2: web server — the shareable red-team demo
 
-`web.py` + small JS frontend — the goal is a shareable demo (possibly crowdsourced
-red-teaming, HF-space-style).
+`web.py` + small JS frontend. **This is how red-teamers get access: a URL, nothing
+else** — no repo clone, no Python env, no keys (decided 2026-08-13; the CLI stays
+the dev/test/agent harness, not the teammate distribution path). The server host
+holds everything: the adapter, the base model, the OpenRouter key (never exposed to
+clients). Goal: a shareable demo for the team's red-teamers now, possibly
+crowdsourced red-teaming later (HF-space-style).
+
+### Hosting reality (verified 2026-08-13 — the web server does NOT run on the cluster)
+
+- This container (FMLE platform, compute node dgx03) is behind **Docker NAT**
+  (172.17.0.8, bridge network). Ports cannot be published from inside; there is no
+  sshd; outbound internet goes through an authenticated HTTP proxy only.
+- **The ONLY inbound door is the platform's Jupyter proxy** → container port 6006 at
+  the fixed path `/dgx03/<JUPYTER_ID>/` (that's the IP-in-Chrome URL). No
+  `jupyter-server-proxy` is installed, so no other container port is reachable from
+  anywhere — a web server hosted here is unreachable for everyone, teammates included.
+- ⚠️ That Jupyter server runs with **empty token / no password** — the URL is
+  unauthenticated code execution as mls01. Treat it as a secret; never put it in
+  docs, tickets, or demos.
+- SSH credentials are to the **login node (master)** only; master cannot route to the
+  container, and ssh *from* the container is broken (uid 1562). But `/home/mls01`
+  (incl. `psiml_data/`) is **NFS-exported from master**, and `/data`, `/fairing` are
+  shared Lustre — files are the reliable laptop⇄container channel.
+
+Consequence: hosting on the cluster is out. Instead:
+
+- **Option A (CHOSEN): host off-cluster — the user's laptop for ad-hoc demos, a
+  small GCP VM for the stable shared instance.** The stack is portable by design:
+  guard = Gemma-3-**1B** (1.9 GB, ~1 s/check on CPU — a GCP e2-small is plenty, no
+  GPU needed; `--device` fallback already spec'd), target = **OpenRouter**
+  (reachable from anywhere). Server host needs: this repo + the 25 MB LoRA adapter
+  (copy out via `scp` through the login node) + gemma-3-1b-it base (HF download) +
+  an OpenRouter key. Red-teamers just open the URL.
+  - **Exposure**: on the laptop, LAN binding is enough for an in-person demo. On the
+    GCP VM, an ephemeral IP + firewall rule works for a small trusted group; when a
+    stable hostname / HTTPS / proper access gate is wanted, put **Cloudflare Tunnel
+    (free tier)** in front — `cloudflared` on the VM, no open inbound ports, and
+    Cloudflare Access (email-PIN allowlist) as the auth layer. Not expected to be
+    needed day one.
+  - **Auth floor regardless of host**: never run it bare-unauthenticated beyond a
+    LAN — it proxies paid OpenRouter traffic and logs harmful text. Minimum a shared
+    token; Cloudflare Access when the tunnel is in use.
+  - **Session logs live on the server host**; they're v3-dataset raw material, so
+    after a GCP stint ship `psiml_data/redteam_sessions/` back to the cluster
+    (`scp` to the login node lands it in the NFS home).
+- **Option B (fallback, only if the cluster must be in the loop — e.g. local Qwen3.5
+  as target on the A100): NFS file queue.** The off-cluster FastAPI backend (laptop
+  or GCP VM) writes request JSON to `psiml_data/aegis_queue/` (writable via the login
+  node), a watcher (`aegis-serve --queue`) in the container runs guard inference and
+  appends events to a response file, the backend polls. Zero network changes, works
+  today; ~1–3 s overhead per exchange and clunky pseudo-streaming via append-poll.
+  Do not build unless Option A proves insufficient.
+- **Option C (REJECTED): laptop backend RPCs into JupyterLab's kernel API.** Works in
+  principle (REST + WS, no token!), but fragile, couples the demo to a dev tool, and
+  leans on the unauthenticated endpoint above. Don't.
+
+### web.py design (unchanged by the hosting decision)
 
 - Backend: **FastAPI + WebSocket** (or SSE) endpoint, e.g. `/ws/chat`. Protocol = the
   exact event schema above, one JSON message per event; client sends
   `{"type": "user", "text": ...}` / `{"type": "reset"}`.
 - **One `GuardedSession` per WebSocket connection** (session state = conversation),
-  all sharing the single loaded Gemma on GPU. Guard checks serialize on one model —
-  fine at demo scale (ms per check); if contention ever matters, a small asyncio queue
-  in front of the guard is enough.
+  all sharing the single loaded Gemma. Guard checks serialize on one model —
+  fine at demo scale (~1 s/check even on CPU); if contention ever matters, a small
+  asyncio queue in front of the guard is enough.
 - Frontend: minimal chat page rendering token deltas live, check-score sparkline, red
   block banner. Serve statically from FastAPI for a one-process demo.
-- Network checklist (cluster-specific, all solvable):
-  - bind `0.0.0.0` + pick a free high port; external access likely needs an
-    **SSH tunnel** (`ssh -L 8080:localhost:8080 <cluster>`) since cluster ingress is
-    restricted — verify before promising a URL;
-  - **CORS** if the page is served from a different origin than the WS endpoint;
-  - cluster already has outbound HTTPS to OpenRouter (the jailbreak scripts use it);
-  - do NOT expose the endpoint unauthenticated to the public internet while it proxies
-    paid OpenRouter traffic and logs harmful text — at minimum a shared token.
+- Network checklist (server edition — laptop or GCP VM):
+  - laptop: bind `0.0.0.0` for LAN demos, `127.0.0.1` otherwise. GCP VM: bind
+    `0.0.0.0` behind the GCP firewall rule, or `127.0.0.1` when fronted by
+    `cloudflared`. Pick a free high port either way;
+  - **CORS** if the page is served from a different origin than the WS endpoint
+    (serving the static page from the same FastAPI process avoids this entirely);
+  - the host needs outbound HTTPS to OpenRouter (any normal connection);
+  - auth per Option A: shared token minimum beyond LAN, Cloudflare Access when the
+    tunnel is in use.
 - Reuse check: `core.py` must stay I/O-agnostic; if `web.py` needs anything the CLI
   didn't, extend the event schema, don't special-case.
 
@@ -233,4 +297,9 @@ NOT built in v1 (time).
 - GPU is shared with a teammate's finetuning run — keep footprint ~3 GB, don't kill
   `[Not Found]` PIDs without asking.
 - `scripts/model/results/` is gitignored → the adapter path is machine-local; note this
-  in README for anyone rerunning elsewhere.
+  in README for anyone rerunning elsewhere. For off-cluster serving (Option A above):
+  the adapter is only **25 MB** — copy it from the cluster to the server host via the
+  login node
+  (`scp mls01@<master>:/home/mls01/scripts/model/results/gemma_lora_v2_sweep_phase2/lr3e-4_r8_alpha16_dropout0.0_seed42/best_adapter/*`);
+  gemma-3-1b-it base (1.9 GB) comes from HF. Teammates never need either — they get
+  the web URL.
