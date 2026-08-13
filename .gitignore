@@ -50,4 +50,4 @@ scripts/model/results/**
 
 # Probe activation captures (GBs of fp16 hidden states) — machine-local;
 # the jsonl metadata + REPORT.md alongside them stay tracked.
-psiml_data/probes/local_replay/activations/
+psiml_data/probes/*/activations/
