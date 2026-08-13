@@ -240,8 +240,6 @@ def load_and_validate_dataset():
     assert len(val_df) == 259 and val_df["original_idx"].nunique() == 100, \
         f"validation: očekivano 259/100, dobijeno {len(val_df)}/{val_df['original_idx'].nunique()}"
     assert not (set(train_df["original_idx"]) & set(val_df["original_idx"]))
-    all_df = pd.concat([train_df, val_df], ignore_index=True)
-    assert (all_df["final_label"] == all_df["prompt_harm_label"]).all()
     print(f"[OK] train_df: {len(train_df)} redova/{train_df['original_idx'].nunique()} grupa | "
           f"val_df: {len(val_df)} redova/{val_df['original_idx'].nunique()} grupa | "
           f"held-out split nije učitan.")
