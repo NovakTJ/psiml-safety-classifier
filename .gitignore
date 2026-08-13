@@ -47,3 +47,7 @@ CLAUDE.md
 scripts/model/results/**
 !scripts/model/results/**/
 !scripts/model/results/**/REPORT.md
+
+# Probe activation captures (GBs of fp16 hidden states) — machine-local;
+# the jsonl metadata + REPORT.md alongside them stay tracked.
+psiml_data/probes/local_replay/activations/
