@@ -1,7 +1,8 @@
 # AEGIS — guarded-chat interface for red-teaming the Gemma classifier
 
-Status: **IN PROGRESS** (spec 2026-08-13; `core.py` + `tests/` implemented same day,
-`cli.py` next). Serving architecture decided 2026-08-13: **the web server is how
+Status: **FRONTENDS DONE** (spec 2026-08-13; `core.py` + `tests/` + `cli.py`
+implemented same day; `web.py` + `tests/test_web.py` + laptop-CPU live smoke
+done 2026-08-13 evening — see verification checklist item 6). Serving architecture decided 2026-08-13: **the web server is how
 red-teamers get access (a URL — no repo clones, no local deps), hosted off-cluster**
 (laptop for ad-hoc, GCP VM for the stable shared instance), NOT in this container —
 see "Hosting reality" under Frontend 2.
@@ -347,6 +348,17 @@ constructor args / CLI flags, never bake them deeper than a default:
    guard prompt), blocked turn keeps the REAL partial in the log while
    `messages_after` shows the block notice.
 5. ✅ `README.md` written; `CLAUDE.md` Status updated.
+6. ✅ **Web server live smoke (laptop CPU, 2026-08-13)**: `web.py --device cpu`
+   served the page + `/api/config`; over a real WebSocket a benign turn
+   streamed token/check/verdict events to completion (p≈0), a harmful prompt
+   was blocked by the token-0 pre-check (p=1.0, block notice in history, real
+   turn in the `aegis_*_w001.jsonl` web session log), and `reset` worked.
+   `tests/test_web.py` (17 checks, stub session, no model/network) covers
+   page/config endpoints, event ordering, blocked-turn protocol, reset,
+   malformed messages, and token auth (accepted/rejected). Not yet done:
+   multi-client concurrent smoke (turns serialize on the guard lock by
+   design); browser-side UI check (page verified served, JS not exercised
+   headlessly).
 
 ## Pitfalls carried over (read CLAUDE.md for full text)
 

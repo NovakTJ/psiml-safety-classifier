@@ -13,6 +13,7 @@ On the **cluster** everything just works (`ccpp_env`, `/data/models`, adapter in
 python3 -m venv ~/aegis_env
 ~/aegis_env/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
 ~/aegis_env/bin/pip install "transformers==4.57.6" peft accelerate
+~/aegis_env/bin/pip install fastapi "uvicorn[standard]"   # web.py only
 
 # base model: google/gemma-3-1b-it is license-gated; the unsloth mirror is
 # identical and ungated — core.py uses it automatically when /data/models
@@ -46,6 +47,37 @@ Gemma), `--guard-prompt '...'|@file`, `--model OPENROUTER_ID` (default
 `--no-precheck` (disable the token-0 prompt pre-check — ablation knob),
 `--log-dir`. See PLAN.md "Expected-to-change pieces" for why these are knobs.
 
+## Web server (`web.py`, frontend 2 — the shareable demo)
+
+Teammates get a URL, nothing else; the server holds the model, adapter and
+OpenRouter key. One process serves the chat page AND the WebSocket endpoint
+(same origin, no CORS).
+
+```bash
+# localhost demo
+~/aegis_env/bin/python scripts/redteam/aegis/web.py --device cpu
+
+# LAN / GCP VM demo — token REQUIRED when binding beyond localhost
+# (the server proxies paid OpenRouter traffic and logs harmful text)
+~/aegis_env/bin/python scripts/redteam/aegis/web.py --device cpu \
+    --host 0.0.0.0 --port 8321 --token 'shared-secret'
+# red-teamers open http://<host>:8321/ and enter the token when prompted
+```
+
+All `cli.py` engine flags work identically (`--adapter none`, `--model`,
+`--threshold`, `--check-every`, `--thinking`, …). Architecture: ONE shared
+`GemmaGuard` loaded at startup; each WebSocket connection gets its own
+`GuardedSession` (own history + own session log, `aegis_*_wNNN.jsonl`);
+turns serialize on a single lock because the guard's KV-cache state is
+per-turn — fine at demo scale (seconds/check on CPU, ms on GPU).
+
+Protocol (`/ws/chat`): client sends `{"type":"user","text":...}` /
+`{"type":"reset"}`; server streams the core.py event schema
+(`ready`/`token`/`reasoning`/`check`/`verdict`/`error`/`reset_ok`). The page
+renders tokens live, a P(harmful) sparkline per response, and the block
+banner — which, per PLAN.md "Expected-to-change" #4, tells the red-teamer
+that a blocked BENIGN request is a false positive (guard failure), not a win.
+
 Session logs: one JSONL per session in `psiml_data/redteam_sessions/`
 (config header incl. target model + guard prompt, per-turn checks with
 latencies, verdicts; the REAL blocked partial is preserved in the log while the
@@ -64,6 +96,7 @@ demo, raise `--check-every` (e.g. 150) at the cost of later blocks.
 PY=~/aegis_env/bin/python   # or /home/mls01/ccpp_env/bin/python on the cluster
 $PY scripts/redteam/aegis/tests/test_core_logic.py         # no model/network
 $PY scripts/redteam/aegis/tests/test_text_construction.py  # no model/network
+$PY scripts/redteam/aegis/tests/test_web.py                # web protocol+auth, stub session, no model/network
 $PY scripts/redteam/aegis/tests/test_guard_live.py --device cpu [--kv-only|--logit-only] [--dtype fp32]
 $PY scripts/redteam/aegis/tests/debug_kv.py                # fp32 exactness proof, crosses the 512 window
 ```
