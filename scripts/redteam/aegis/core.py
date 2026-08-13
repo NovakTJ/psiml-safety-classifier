@@ -34,6 +34,7 @@ cannot read the leak and adapt. The real partial is kept only in the session
 log.
 """
 
+import copy
 import json
 import os
 import sys
@@ -50,30 +51,44 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__)))))
 
 # ---------------------------------------------------------------------------
-# Required env-var block — MUST precede torch/transformers. uid 1562 has no
-# /etc/passwd entry here; without these, transformers crashes on getpwuid
-# while resolving cache dirs (see CLAUDE.md).
+# Cluster-only env-var block — MUST precede torch/transformers ON THE CLUSTER.
+# There, uid 1562 has no /etc/passwd entry; without these, transformers crashes
+# on getpwuid while resolving cache dirs (see CLAUDE.md), and HF must stay
+# offline because models live under /data/models. On other machines (laptop,
+# GCP VM) HF stays ONLINE and the base model comes from the Hub.
 # ---------------------------------------------------------------------------
-os.environ.setdefault("USER", "mls01")
-os.environ.setdefault("LOGNAME", "mls01")
-os.environ.setdefault("TORCHINDUCTOR_CACHE_DIR", "/home/mls01/.cache/torchinductor")
-os.environ.setdefault("TRITON_CACHE_DIR", "/home/mls01/.cache/triton")
-os.environ.setdefault("XDG_CACHE_HOME", "/home/mls01/.cache")
-os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
-os.environ.setdefault("HF_HUB_OFFLINE", "1")
+_ON_CLUSTER = os.path.isdir("/data/models")
+if _ON_CLUSTER:
+    os.environ.setdefault("USER", "mls01")
+    os.environ.setdefault("LOGNAME", "mls01")
+    os.environ.setdefault("TORCHINDUCTOR_CACHE_DIR", "/home/mls01/.cache/torchinductor")
+    os.environ.setdefault("TRITON_CACHE_DIR", "/home/mls01/.cache/triton")
+    os.environ.setdefault("XDG_CACHE_HOME", "/home/mls01/.cache")
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
 if not os.environ.get("PYTORCH_CUDA_ALLOC_CONF"):
     os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 
 # ---------------------------------------------------------------------------
 # Fixed constants
 # ---------------------------------------------------------------------------
-BASE_MODEL_PATH = "/data/models/gemma-3-1b-it"
+# Base model for the guard. Cluster: the local copy under /data/models.
+# Off-cluster: the ungated HF mirror (google/gemma-3-1b-it is license-gated;
+# unsloth's mirror ships identical weights + tokenizer). Override with the
+# AEGIS_BASE_MODEL env var (e.g. a local snapshot path).
+BASE_MODEL_PATH = os.environ.get(
+    "AEGIS_BASE_MODEL",
+    "/data/models/gemma-3-1b-it" if _ON_CLUSTER else "unsloth/gemma-3-1b-it")
 DEFAULT_ADAPTER = (
     "scripts/model/results/gemma_lora_v2_sweep_phase2/"
     "lr3e-4_r8_alpha16_dropout0.0_seed42/best_adapter"
 )
 
-MODEL_ID = "qwen/qwen3.5-9b"  # the guarded model — do NOT substitute other qwen3.5 ids
+# DEFAULT target model — the guarded model. Other qwen3.5 ids are DIFFERENT
+# models (CLAUDE.md pitfall); swapping targets is an explicit experiment knob
+# (PLAN.md "Expected-to-change" #3), so this stays the default and GuardedSession
+# takes a `model` arg.
+MODEL_ID = "qwen/qwen3.5-9b"
 API_URL = "https://openrouter.ai/api/v1/chat/completions"
 
 DEFAULT_LOG_DIR = "psiml_data/redteam_sessions"
@@ -96,10 +111,10 @@ PREFIX_OPEN = "<bos><start_of_turn>user\n"
 SUFFIX = "<end_of_turn>\n<start_of_turn>model\n"
 
 
-def build_header(prompt):
+def build_header(prompt, instruction=PROMPT_1):
     """Static text that precedes the streamed response: class instruction,
     the user prompt, and the ASSISTANT RESPONSE header."""
-    return f"{PROMPT_1}\n\nUSER PROMPT:\n{prompt}\n\nASSISTANT RESPONSE:\n"
+    return f"{instruction}\n\nUSER PROMPT:\n{prompt}\n\nASSISTANT RESPONSE:\n"
 
 
 def build_full_text(prompt, response):
@@ -135,20 +150,36 @@ def block_notice(n_tokens):
 # first-token logits, with optional KV-cache reuse.
 # ---------------------------------------------------------------------------
 class GemmaGuard:
-    def __init__(self, adapter=None, device="cuda"):
+    def __init__(self, adapter=None, device=None, guard_prompt=None, dtype=None):
         from peft import PeftModel
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
+        device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        # bf16 everywhere by default (matches training + cluster). float32 is a
+        # debug knob: with it, incremental-vs-full scoring agrees to ~1e-6,
+        # which is how we proved the KV crop/reuse logic is exact and the bf16
+        # score wobble (~0.005 in P) is pure numeric noise.
+        dtype = dtype or torch.bfloat16
         self.tokenizer = AutoTokenizer.from_pretrained(
-            BASE_MODEL_PATH, local_files_only=True)
+            BASE_MODEL_PATH, local_files_only=_ON_CLUSTER)
         base = AutoModelForCausalLM.from_pretrained(
-            BASE_MODEL_PATH, local_files_only=True, dtype=torch.bfloat16,
+            BASE_MODEL_PATH, local_files_only=_ON_CLUSTER, dtype=dtype,
             attn_implementation="eager").to(device)
-        adapter = adapter or DEFAULT_ADAPTER
-        if not os.path.isabs(adapter):
-            adapter = os.path.join(REPO_ROOT, adapter)
-        self.adapter_path = adapter
-        self.model = PeftModel.from_pretrained(base, adapter)
+        # adapter=None -> the locked default; adapter="none"/"" -> BARE base
+        # model (zero-shot guard, no LoRA — PLAN.md "Expected-to-change" #1).
+        if adapter is None:
+            adapter = DEFAULT_ADAPTER
+        if str(adapter).strip().lower() in ("", "none"):
+            self.model = base
+            self.adapter_path = None
+        else:
+            if not os.path.isabs(adapter):
+                adapter = os.path.join(REPO_ROOT, adapter)
+            self.adapter_path = adapter
+            self.model = PeftModel.from_pretrained(base, adapter)
+        # Classifier instruction (PLAN.md "Expected-to-change" #2). With an
+        # adapter loaded this MUST stay the verbatim training prompt.
+        self.guard_prompt = guard_prompt or PROMPT_1
         self.model.eval()
         self._use_cache_orig = self.model.config.use_cache
         self.model.config.use_cache = True
@@ -168,7 +199,7 @@ class GemmaGuard:
         cache with one full forward over the prefix. Call once per turn before
         scoring response deltas."""
         self.prompt = prompt
-        prefix_text = PREFIX_OPEN + build_header(prompt)
+        prefix_text = PREFIX_OPEN + build_header(prompt, self.guard_prompt)
         prefix_ids = self.tokenizer.encode(prefix_text, add_special_tokens=False)
         ids = torch.tensor([prefix_ids]).to(self.device)
         with torch.inference_mode():
@@ -200,71 +231,80 @@ class GemmaGuard:
     @torch.inference_mode()
     def check_incremental(self, response_so_far):
         """Score the current response-so-far using the incremental KV-cache
-        scheme. Returns (p_harmful, n_response_tokens). Advances `self.cache`.
+        scheme. Returns (p_harmful, n_response_tokens, elapsed_ms).
+        Advances `self.cache`.
 
         BPE boundary care: re-tokenizing the (longer) response may not share a
         clean suffix with the cached response tokens, so we align the cached
         sequence against the freshly-tokenized target and forward only the
-        delta after the longest matched prefix, then crop the suffix back out
-        so the cache always holds exactly prefix + response-so-far.
+        delta after the longest matched prefix.
 
-        KNOWN NOT-WORKING (verified 2026-08-13, `--kv-only --device cuda`):
-        the incremental P(harmful) disagrees with `score_full` (full
-        recompute) by up to ~0.004, and several incremental results are
-        bit-identical to EARLIER recomputes (e.g. increm@len57 == full@len17) —
-        i.e. the cache is not being reset to the full prefix+response state,
-        so later checks score against a stale/shorter sequence. A standalone
-        probe (fresh cache each check, no crop) matched full recompute
-        bitwise, so the regression is in THIS function's crop/reuse logic
-        (re-using a cropped `past_key_values` with a full-length
-        `attention_mask`), not in the model or tokenizer. Until fixed, use
-        `score_full` (one full forward per check) for correctness; the block
-        decision still works, just without the KV speedup.
+        SLIDING-WINDOW CARE (found by live smoke 2026-08-13, laptop CPU):
+        gemma-3-1b's cache is a DynamicCache whose sliding-window layers
+        (`DynamicSlidingWindowLayer`, window 512) REFUSE to crop once
+        cumulative_length >= 512 — so the original "forward suffix into the
+        shared cache, then crop it back" scheme crashes mid-stream on any
+        exchange longer than the window. Instead the REAL cache only ever
+        holds prefix + response-so-far (never the suffix): the score comes
+        from forwarding the 5 suffix tokens over a THROWAWAY deep copy of
+        the cache (~50 MB at 500 tokens, tens of ms on CPU — negligible next
+        to a guard forward). The only remaining crop is the rare BPE-realign
+        crop of the response tail; if that also hits the window limit we
+        re-prime with one full forward over the matched prefix.
+
+        NUMERICS (resolved 2026-08-13, laptop CPU repro + fp32 ablation —
+        tests/debug_kv.py): an earlier CUDA run showed ~0.004 wobble vs
+        `score_full` and bit-identical P-values across different lengths, and
+        was misread as a stale-cache bug. It is NOT one: cache accounting is
+        exact (cache length == len(cached_seq) at every step), and in float32
+        incremental == full recompute to 2.6e-7 over a growing stream. The
+        bf16 wobble (worst 5.7e-3 on CPU) is matmul reduction-order noise
+        between chunked and full forwards, and the repeated bit-identical
+        P-values are just bf16 logit quantization snapping P to a discrete
+        grid. Practical impact: |dP| <= ~0.006 around the decision threshold
+        — negligible except in knife-edge cases; keep bf16 and the cache.
         """
         t0 = time.time()
         resp_ids = self.tokenizer.encode(response_so_far, add_special_tokens=False)
-        target_ids = self._prefix_ids + resp_ids + self._suffix_ids
+        target_ids = self._prefix_ids + resp_ids  # the REAL cache target (no suffix)
 
         # Align: the cached sequence must be a strict prefix of target_ids.
         L = longest_common_prefix_len(self.cached_seq, target_ids)
         if L < len(self.cached_seq):
-            self.cache.crop(L)
-            self.cached_seq = self.cached_seq[:L]
+            try:
+                self.cache.crop(L)
+            except ValueError:
+                # Sliding-window layers can't crop beyond their window —
+                # re-prime with one full forward over the matched prefix.
+                ids = torch.tensor([target_ids[:L]]).to(self.device)
+                out = self.model(ids, attention_mask=torch.ones_like(ids),
+                                 use_cache=True)
+                self.cache = out.past_key_values
+            self.cached_seq = target_ids[:L]
 
-        new_ids = target_ids[L:]
-        if new_ids:
-            past_len = L
-            full_len = past_len + len(new_ids)
-            mask = torch.ones(1, full_len, dtype=torch.long).to(self.device)
+        # 1) Advance the real cache over the response delta only (never the
+        #    template suffix, so no crop-back is ever needed).
+        delta = target_ids[L:]
+        if delta:
+            mask = torch.ones(1, L + len(delta), dtype=torch.long).to(self.device)
             out = self.model(
-                input_ids=torch.tensor([new_ids]).to(self.device),
+                input_ids=torch.tensor([delta]).to(self.device),
                 attention_mask=mask, past_key_values=self.cache, use_cache=True)
             self.cache = out.past_key_values
-            logits = out.logits[0, -1]
-        else:
-            # Nothing new (e.g. empty response at turn end): re-score by a
-            # single full recompute is not possible with the cache alone, so
-            # just run one token through. Worst case for an empty response.
-            out = self.model(
-                input_ids=torch.tensor([self._suffix_ids[-1]]).to(self.device),
-                attention_mask=torch.ones(1, L + 1, dtype=torch.long).to(self.device),
-                past_key_values=self.cache, use_cache=True)
-            self.cache = out.past_key_values
-            logits = out.logits[0, -1]
+            self.cached_seq = self.cached_seq + delta  # == target_ids
 
-        p = self._score_logits(logits)
-
-        # Crop the template-suffix back out so the cache holds prefix+response.
-        persist_len = len(self._prefix_ids) + len(resp_ids)
-        cur_len = len(self.cached_seq) + len(new_ids)
-        if cur_len > persist_len:
-            self.cache.crop(persist_len)
-            self.cached_seq = target_ids[:persist_len]
-        else:
-            self.cached_seq = target_ids[:persist_len]
+        # 2) Score: forward the suffix over a throwaway deep copy. The real
+        #    cache stays exactly prefix + response-so-far.
+        work = copy.deepcopy(self.cache)
+        n = len(self.cached_seq)
+        mask = torch.ones(1, n + len(self._suffix_ids), dtype=torch.long).to(self.device)
+        out = self.model(
+            input_ids=torch.tensor([self._suffix_ids]).to(self.device),
+            attention_mask=mask, past_key_values=work, use_cache=True)
+        p = self._score_logits(out.logits[0, -1])
 
         ms = (time.time() - t0) * 1000.0
-        return p, len(resp_ids)
+        return p, len(resp_ids), ms
 
     def close(self):
         import gc
@@ -291,7 +331,7 @@ class SessionLogger:
             "created_at": utcnow(),
             "pid": os.getpid(),
             "config": config,
-            "target_model": MODEL_ID,
+            "target_model": config.get("target_model", MODEL_ID),
             "guard_base_model": BASE_MODEL_PATH,
         })
 
@@ -312,10 +352,13 @@ class SessionLogger:
 # GuardedSession — the frontend-facing class.
 # ---------------------------------------------------------------------------
 class GuardedSession:
-    def __init__(self, adapter=None, device="cuda", thinking=False,
+    def __init__(self, adapter=None, device=None, thinking=False,
                  check_every=50, threshold=0.5, temperature=1.0, max_tokens=3072,
-                 log_dir=DEFAULT_LOG_DIR, api_key=None, guard=None, logger=None):
-        self.guard = guard or GemmaGuard(adapter=adapter, device=device)
+                 log_dir=DEFAULT_LOG_DIR, api_key=None, guard=None, logger=None,
+                 model=None, guard_prompt=None):
+        self.guard = guard or GemmaGuard(adapter=adapter, device=device,
+                                         guard_prompt=guard_prompt)
+        self.model_id = model or MODEL_ID
         self.thinking = thinking
         self.check_every = check_every
         self.threshold = threshold
@@ -338,6 +381,8 @@ class GuardedSession:
     # ---- introspection ----------------------------------------------------
     def config_snapshot(self):
         return {
+            "target_model": self.model_id,
+            "guard_prompt": getattr(self.guard, "guard_prompt", PROMPT_1),
             "thinking": self.thinking,
             "check_every": self.check_every,
             "threshold": self.threshold,
@@ -397,10 +442,12 @@ class GuardedSession:
                     # Tokens stream in; run a check once enough NEW tokens have
                     # arrived since the previous check.
                     if self._check_due(content_so_far, last_token_count):
-                        p, n_tok = self.guard.check_incremental(content_so_far)
+                        p, n_tok, ms = self.guard.check_incremental(content_so_far)
                         last_token_count = n_tok
-                        checks.append({"n_tokens": n_tok, "p_harmful": p})
-                        self._record_check(p, n_tok, checks)
+                        checks.append({"n_tokens": n_tok, "p_harmful": p, "ms": ms})
+                        self._record_check(p, ms)
+                        yield {"type": "check", "n_tokens": n_tok,
+                               "p_harmful": p, "ms": round(ms, 1)}
                         if p >= self.threshold:
                             blocked = True
                             block_p = p
@@ -433,9 +480,11 @@ class GuardedSession:
         # a mid-stream checkpoint) — unless already blocked.
         if not blocked:
             try:
-                p, n_tok = self.guard.check_incremental(content_so_far)
-                checks.append({"n_tokens": n_tok, "p_harmful": p})
-                self._record_check(p, n_tok, checks)
+                p, n_tok, ms = self.guard.check_incremental(content_so_far)
+                checks.append({"n_tokens": n_tok, "p_harmful": p, "ms": ms})
+                self._record_check(p, ms)
+                yield {"type": "check", "n_tokens": n_tok, "p_harmful": p,
+                       "ms": round(ms, 1)}
                 if p >= self.threshold and content_so_far:
                     blocked = True
                     block_p = p
@@ -475,13 +524,13 @@ class GuardedSession:
         cur = len(n)
         return cur - last_token_count >= self.check_every
 
-    def _record_check(self, p, n_tok, checks):
+    def _record_check(self, p, ms):
         self._checks_run += 1
-        return p
+        self._check_latencies.append(ms)
 
     def _open_stream(self):
         payload = {
-            "model": MODEL_ID,
+            "model": self.model_id,
             "messages": self.messages,
             "stream": True,
             "temperature": self.temperature,

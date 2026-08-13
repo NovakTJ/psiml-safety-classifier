@@ -52,8 +52,10 @@ endpoint so pi can use guarded Qwen3.5 as its brain).
 - `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` (we share the GPU; be polite).
 - Guard loads with ~3 GB; check `nvidia-smi` first and keep total footprint small.
   Provide `--device cpu` fallback (1B model, ~1 s/check on CPU — tolerable).
-- OpenRouter: `OPENROUTER_API_KEY` from env (`~/.bashrc`), model id EXACTLY
-  `qwen/qwen3.5-9b` (other qwen3.5 ids are different models — CLAUDE.md pitfall).
+- OpenRouter: `OPENROUTER_API_KEY` from env (`~/.bashrc`), model id DEFAULTS to
+  EXACTLY `qwen/qwen3.5-9b` (other qwen3.5 ids are different models — CLAUDE.md
+  pitfall). Swappable via `--model` (see "Expected-to-change" #3) — but never
+  change the default silently.
 - Never write artifacts to /tmp (lost work twice that way).
 
 ## Components
@@ -268,8 +270,10 @@ NOT built in v1 (time).
 
 | knob | default | notes |
 |---|---|---|
-| `--adapter` | phase2 winner path above | swap checkpoints |
-| `--device` | `cuda` | `cpu` fallback |
+| `--adapter` | phase2 winner path above | swap checkpoints; `none` = bare base model (zero-shot guard) |
+| `--guard-prompt` | `PROMPT_1` verbatim | classifier instruction text; must match training format when an adapter is loaded |
+| `--model` | `qwen/qwen3.5-9b` | OpenRouter target model — see "Expected-to-change" below |
+| `--device` | `cuda` if available else `cpu` | `cpu` fallback (~1 s/check) |
 | `--thinking` | off | OpenRouter reasoning toggle |
 | `--check-every` | 50 | Gemma tokens between checks |
 | `--threshold` | 0.5 | P(harmful) block threshold; revisit after logit-validation |
@@ -277,17 +281,61 @@ NOT built in v1 (time).
 | `--log-dir` | `psiml_data/redteam_sessions/` | |
 | `--jsonl` | off | machine stdio mode |
 
-## Verification checklist (before calling it done)
+## Expected-to-change pieces (design for swap-ability, 2026-08-13)
 
-1. **KV-cache numeric check**: incremental score (delta+crop scheme) == full-recompute
-   score on a fixed exchange, to fp tolerance. This validates the trickiest code.
-2. **Logit-scoring check**: agreement with sweep `validation_predictions` labels.
-3. **Live smoke**: one benign prompt (no block, full stream) + one known-successful
-   jailbreak prompt from `psiml_data/jailbreak_v1/successful_jailbreaks.jsonl`
-   (expect mid-stream block) through `aegis-chat`, both modes (REPL via pexpect or
-   `--jsonl` directly).
-4. Session log inspection: complete, well-formed, real partial preserved on block.
-5. Update `CLAUDE.md` Status (AEGIS entry + pointer here) and write `README.md`.
+These are deliberate experiment variables, NOT fixed constants — keep them as
+constructor args / CLI flags, never bake them deeper than a default:
+
+1. **The classifier adapter (and whether there IS one).** The Gemma-3-1B base is
+   fixed, but the LoRA checkpoint will change as sweeps continue — and we also want
+   to red-team the **zero-shot** (no-adapter) guard for comparison. `--adapter none`
+   must load bare gemma-3-1b-it.
+2. **The classifier instruction prompt** (`PROMPT_1`). Different wordings are an
+   experiment axis (zero-shot variants already exist from the v2 eval). Note the
+   coupling: with a LoRA adapter loaded, the prompt MUST stay the verbatim training
+   prompt or the adapter is off-distribution; prompt-swap experiments make most sense
+   with `--adapter none`.
+3. **The target model on OpenRouter.** Qwen3.5-9B is proving VERY hard to jailbreak
+   (38/300 under our best templates) — for red-team yield we may point AEGIS at a
+   weaker/more permissive model id. The guard doesn't care (it classifies text, not
+   weights); the tradeoff to record when we do this: positives no longer come from
+   the actually-deployed model (CLAUDE.md "generate training data ONLY from the
+   guarded model" applies to TRAINING data — red-team demos are allowed to differ,
+   but say so in the session log header via the `target_model` field).
+4. **Red-teamer briefing: false positives are failures too.** At some point we
+   explicitly ask red-teamers to *stop attacking and instead think up benign
+   requests that get blocked* — an over-firing guard is as much a classifier
+   failure as a jailbreak, and AEGIS logs both. Blocked-benign turns in the session
+   logs are FP evidence (threshold calibration + future training data), so the
+   block notice/verdict must always record `p_harmful` and the token offset even
+   when the blocked text is innocuous. Plan the web UI copy so a blocked benign
+   request doesn't look like a red-teamer "win".
+
+## Verification checklist (status 2026-08-13, laptop CPU)
+
+1. ✅ **KV-cache numeric check** — DONE, and it caught two different things:
+   (a) the originally-suspected "stale cache" bug **does not exist** — fp32
+   ablation (`tests/debug_kv.py`) shows incremental == full recompute to
+   ~1.5e-6 even past the 512-token sliding window; the bf16 wobble (≤6e-3
+   short, ≤2e-2 long) is matmul reduction-order noise + bf16 logit
+   quantization, harmless at the 0.5 threshold; (b) a REAL bug it did catch:
+   `DynamicSlidingWindowLayer.crop()` raises once the exchange is longer than
+   gemma-3-1b's 512-token window → scheme switched to "suffix over a throwaway
+   deep-copied cache", see README "Implementation notes".
+2. ⏳ **Logit-scoring check** — pending: needs the sweep's
+   `validation_predictions_epoch_6.csv`, which is cluster-only (gitignored
+   results dir). Run `tests/test_guard_live.py --logit-only` on the cluster.
+3. ✅ **Live smoke (jsonl mode, laptop CPU)**: benign soup recipe streamed to
+   completion (742 Gemma tokens, 15 checks, no block, p≈0) crossing the 512
+   window; direct harmful request blocked mid-stream at token 50 (p≈1.0,
+   classification = harmful OR-rule fires on harmful prompt + refusal).
+   Known-successful-jailbreak block test deferred — per 2026-08-13 decision,
+   Qwen3.5 is very hard to jailbreak so we are NOT re-deriving live jailbreaks
+   as a smoke step; the OR-rule block above already exercises the block path.
+4. ✅ Session log inspection: header carries full config (incl. target model +
+   guard prompt), blocked turn keeps the REAL partial in the log while
+   `messages_after` shows the block notice.
+5. ✅ `README.md` written; `CLAUDE.md` Status updated.
 
 ## Pitfalls carried over (read CLAUDE.md for full text)
 

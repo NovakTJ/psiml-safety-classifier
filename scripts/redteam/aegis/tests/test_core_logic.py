@@ -52,7 +52,7 @@ class FakeGuard:
     def check_incremental(self, response_so_far):
         n = len(self.tokenizer.encode(response_so_far))
         p = self._probs.pop(0) if self._probs else 0.0
-        return p, n
+        return p, n, 1.0  # (p_harmful, n_tokens, ms)
 
     def close(self):
         pass
@@ -152,6 +152,10 @@ def test_block_midstream():
     check("midstream: real partial in log",
           turn["response"] == "$PART1$$PART2$", turn["response"])
     check("midstream: log has checks", len(turn["checks"]) == 2, len(turn["checks"]))
+    check("midstream: check events yielded to frontend",
+          sum(1 for e in result if e["type"] == "check") == 2)
+    check("midstream: check events carry latency",
+          all("ms" in e for e in result if e["type"] == "check"))
     check("midstream: log verdict blocked", turn["verdict"]["blocked"] is True)
 
 

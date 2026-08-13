@@ -23,6 +23,8 @@ import os
 import sys
 import time
 
+import torch
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from core import GemmaGuard, DEFAULT_ADAPTER  # noqa: E402
 
@@ -62,18 +64,23 @@ def test_kv_incremental_matches_full(guard):
     # ONE turn (begin_turn is called once).
     strides = [8, 17, 29, 41, 57, 79, 101]  # growing response lengths (words-ish)
     guard.begin_turn(prompt)
+    # Tolerance: in bf16, chunked (incremental) vs full forwards differ by
+    # matmul reduction-order noise — worst |dP| observed 5.7e-3 on CPU
+    # (2026-08-13). In float32 the same check agrees to ~3e-7; run with
+    # --dtype fp32 for a logic-exactness proof (tests/debug_kv.py did).
+    tol = 1e-4 if guard.model.config.torch_dtype == torch.float32 else 1e-2
     for n in strides + [len(response)]:
         resp = response[:n]
-        p_inc, _ = guard.check_incremental(resp)
+        p_inc, _, _ = guard.check_incremental(resp)
         # Full recompute from scratch over the same exchange.
         p_full = guard.score_full(resp)
         check(f"KV step (resp len {n}): incremental==full",
-              abs(p_inc - p_full) < 1e-4,
-              f"inc={p_inc} full={p_full}")
+              abs(p_inc - p_full) < tol,
+              f"inc={p_inc} full={p_full} tol={tol}")
     # Also verify a benign response scores low and the harmful-ish one higher.
     guard.begin_turn("What's the weather like today?")
     p_benign = guard.check_incremental(
-        "The weather is sunny and warm with a light breeze this afternoon.")
+        "The weather is sunny and warm with a light breeze this afternoon.")  # p_benign[0] is P(harmful)
     check("benign scored low", p_benign[0] < 0.5, p_benign[0])
     guard.begin_turn(prompt)
     p_attack = guard.check_incremental(response)
@@ -101,7 +108,7 @@ def test_logit_scoring_matches_sweep(guard, max_rows):
     mismatches = []
     for i, row in df.iterrows():
         guard.begin_turn(str(row["prompt"]))
-        p, _ = guard.check_incremental(str(row["response"]))
+        p, _, _ = guard.check_incremental(str(row["response"]))
         pred = "harmful" if p >= 0.5 else "unharmful"
         if pred == row["prediction"]:
             agree += 1
@@ -118,7 +125,7 @@ def test_logit_scoring_matches_sweep(guard, max_rows):
     ps = []
     for i, row in df.iterrows():
         guard.begin_turn(str(row["prompt"]))
-        p, _ = guard.check_incremental(str(row["response"]))
+        p, _, _ = guard.check_incremental(str(row["response"]))
         ps.append(abs(p - 0.5))
     mean_sep = sum(ps) / len(ps) if ps else 0.0
     print(f"  mean |p-0.5| separation: {mean_sep:.4f}")
@@ -132,11 +139,14 @@ def main():
     ap.add_argument("--max-rows", type=int, default=0)
     ap.add_argument("--kv-only", action="store_true")
     ap.add_argument("--logit-only", action="store_true")
+    ap.add_argument("--dtype", choices=["bf16", "fp32"], default="bf16",
+                    help="fp32 proves incremental logic exactness (~3e-7)")
     args = ap.parse_args()
 
-    print(f"Loading guard on device={args.device}")
+    print(f"Loading guard on device={args.device} dtype={args.dtype}")
     t0 = time.time()
-    guard = GemmaGuard(adapter=DEFAULT_ADAPTER, device=args.device)
+    dtype = {"bf16": torch.bfloat16, "fp32": torch.float32}[args.dtype]
+    guard = GemmaGuard(adapter=DEFAULT_ADAPTER, device=args.device, dtype=dtype)
     print(f"Loaded in {time.time()-t0:.0f}s")
 
     if not args.logit_only:
