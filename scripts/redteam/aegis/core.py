@@ -8,6 +8,9 @@ drives `GuardedSession.send()`, which is a generator of event dicts.
 
 Event schema (yielded by `send`):
     {"type": "token",     "text": ...}                      # visible response delta
+                                                              #   (released only after the
+                                                              #   guard clears it — see
+                                                              #   PACED VERIFIED DISPLAY)
     {"type": "reasoning", "text": ...}                      # thinking mode only
     {"type": "check",     "n_tokens": N, "p_harmful": p, "ms": t}
     {"type": "verdict",   "blocked": bool, "p_harmful": p, "n_tokens": N,
@@ -31,7 +34,25 @@ Blocking semantics: when P(harmful) >= threshold at any check, the OpenRouter
 stream is aborted and the partial harmful response is NOT put in the
 model-visible history — a fixed block notice is substituted so the attacker
 cannot read the leak and adapt. The real partial is kept only in the session
-log.
+log. And because the frontend only ever sees guard-cleared text (paced verified
+display, below), a block also means no unverified text ever reached the screen.
+
+PACED VERIFIED DISPLAY ("fake streaming"): send() never forwards raw stream
+deltas. A producer thread buffers the OpenRouter stream (with bounded
+read-ahead of ~2 chunks, so the target cannot outrun the guard), a checker
+thread classifies the growing buffer every `check_every` tokens, and the
+generator releases text only up to the last guard-cleared frontier, paced to
+drain one chunk in roughly one check latency. Why (measured 2026-08-14, laptop
+CPU, tests/bench_speeds.py): Qwen3.5-9B streams ~47 tok/s from OpenRouter
+while a CPU-hosted guard check costs ~3.2–5.7 s per 50-token chunk
+(~9–16 tok/s verification throughput). The old synchronous loop therefore
+stalled the display for seconds per chunk (burst/pause stutter, effective rate
+halved), and naive live display of unverified tokens would leave the guard
+100+ tokens behind — a "blocked at token 50" verdict landing after the whole
+answer was on screen. Paced verified display looks like ordinary streaming,
+keeps classifier/model lag bounded, and on a block the user has only ever seen
+cleared text. On CUDA the check latency collapses and the pace automatically
+approaches real-time.
 
 A block ALSO ENDS THE CONVERSATION: `GuardedSession.reset()` clears BOTH the
 target-visible `self.messages` AND the guard's persistent multi-turn cache
@@ -54,7 +75,9 @@ sliding-window limit on early context is a known, measured caveat there.
 import copy
 import json
 import os
+import queue
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -524,7 +547,12 @@ class GuardedSession:
 
     # ---- the guarded turn -------------------------------------------------
     def send(self, user_message):
-        """Generator: run a guarded multi-turn exchange and yield events."""
+        """Generator: run a guarded multi-turn exchange and yield events.
+
+        Pipeline: pre-check -> producer thread (SSE -> buffer, bounded
+        read-ahead) + checker thread (guard over the growing buffer) -> this
+        generator releases the verified frontier at a paced trickle. See
+        PACED VERIFIED DISPLAY in the module docstring."""
         content_so_far = ""
         reasoning_so_far = ""
         checks = []
@@ -593,66 +621,245 @@ class GuardedSession:
             self.messages.pop()
             return
 
-        try:
-            for event in self._read_stream(stream):
-                etype = event.get("type")
-                if etype == "token":
-                    content_so_far += event["text"]
-                    yield {"type": "token", "text": event["text"]}
-                    # Tokens stream in; run a check once enough NEW tokens have
-                    # arrived since the previous check.
-                    if self._check_due(content_so_far, last_token_count):
-                        p, n_tok, ms = self.guard.check_incremental(content_so_far)
-                        last_token_count = n_tok
-                        checks.append({"n_tokens": n_tok, "p_harmful": p, "ms": ms})
-                        self._record_check(p, ms)
-                        yield {"type": "check", "n_tokens": n_tok,
-                               "p_harmful": p, "ms": round(ms, 1)}
-                        if p >= self.threshold:
-                            blocked = True
-                            block_p = p
-                            block_n = n_tok
-                            self._blocks += 1
-                            self._abort_stream(stream)
-                            finish_reason = "blocked"
-                            break
-                elif etype == "reasoning":
-                    reasoning_so_far += event["text"]
-                    yield {"type": "reasoning", "text": event["text"]}
-                elif etype == "finish":
-                    finish_reason = event["finish_reason"]
-                elif etype == "error":
-                    yield {"type": "error", "message": event["message"]}
-                    self.messages.pop()
+        # ---- streaming pipeline -------------------------------------------
+        # producer: OpenRouter SSE -> buf. Bounded read-ahead: it pauses
+        # whenever the buffered text runs more than `window_chars` (~2 chunks)
+        # past the guard's verified frontier, so the target can never race far
+        # ahead of the classifier (caps classifier/model lag and abort waste;
+        # TCP backpressure does the actual throttling once buffers fill).
+        # checker: classifies buffer snapshots in arrival order — the
+        # incremental KV cache requires monotonic prefixes, hence ONE checker.
+        # This generator is the only other guard client, and only while the
+        # checker is stopped (pre-check above, final check below).
+        cond = threading.Condition()
+        stop = threading.Event()
+        buf = {"text": "", "reasoning": "", "done": False,
+               "finish_reason": None, "error": None}
+        frontier = {"verified": 0}  # chars of buf["text"] the guard has cleared
+        window_chars = max(8, self.check_every * 8)  # ~2 chunks (~4 chars/tok)
+        check_req = queue.Queue(maxsize=1)
+        check_res = queue.Queue()
+
+        def produce():
+            try:
+                for event in self._read_stream(stream):
+                    if stop.is_set():
+                        return
+                    etype = event.get("type")
+                    with cond:
+                        if etype == "token":
+                            buf["text"] += event["text"]
+                        elif etype == "reasoning":
+                            buf["reasoning"] += event["text"]
+                        elif etype == "finish":
+                            buf["finish_reason"] = event["finish_reason"]
+                        elif etype == "error":
+                            buf["error"] = event["message"]
+                            buf["done"] = True
+                        cond.notify_all()
+                        if buf["done"]:
+                            return
+                        while (not stop.is_set()
+                               and len(buf["text"]) - frontier["verified"]
+                               > window_chars):
+                            cond.wait(timeout=0.1)
+            except urllib.error.HTTPError as e:
+                try:
+                    body = e.read().decode(errors="replace")[:300]
+                except Exception:
+                    body = ""
+                with cond:
+                    if not stop.is_set():
+                        buf["error"] = f"HTTP {e.code}: {body}"
+                        buf["done"] = True
+                    cond.notify_all()
+            except Exception as e:  # network / parse / aborted mid-read
+                with cond:
+                    if not stop.is_set():
+                        buf["error"] = repr(e)
+                        buf["done"] = True
+                    cond.notify_all()
+            else:
+                with cond:
+                    buf["done"] = True
+                    cond.notify_all()
+
+        def check_worker():
+            while not stop.is_set():
+                try:
+                    snap = check_req.get(timeout=0.05)
+                except queue.Empty:
+                    continue
+                try:
+                    p, n_tok, ms = self.guard.check_incremental(snap)
+                except Exception as e:
+                    check_res.put(("error", repr(e)))
                     return
-        except urllib.error.HTTPError as e:
-            yield {"type": "error", "message": f"HTTP {e.code}: {e.read().decode(errors='replace')[:300]}"}
-            self.messages.pop()
-            return
-        except Exception as e:  # network / parse
-            yield {"type": "error", "message": repr(e)}
-            self.messages.pop()
-            return
-        finally:
-            stream.close()
+                check_res.put(("check", p, n_tok, ms, len(snap)))
+
+        produce_t = threading.Thread(target=produce, daemon=True,
+                                     name="aegis-producer")
+        check_t = threading.Thread(target=check_worker, daemon=True,
+                                   name="aegis-checker")
+        produce_t.start()
+        check_t.start()
+
+        displayed = 0          # chars of buf["text"] released to the frontend
+        reasoning_shown = 0
+        submitted_chars = 0    # len of the last snapshot handed to the checker
+        outstanding = False    # a snapshot is in the checker, result pending
+        ema_ms = None          # EMA of check latency, drives the display pace
+
+        def pace_s_per_char():
+            # Drain one verified chunk over ~the next check's latency: the
+            # display rides the guard's frontier (smooth, never unverified).
+            if not ema_ms:
+                return 0.02
+            return min(0.05, max(0.0002,
+                                 (ema_ms / 1000.0) / max(1, self.check_every * 4)))
+
+        def teardown(abort):
+            stop.set()
+            with cond:
+                cond.notify_all()
+            if abort:
+                self._abort_stream(stream)
+            else:
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+            produce_t.join(timeout=2.0)   # never touches the guard
+            # The checker DOES touch the guard: it must be fully stopped
+            # before the final check / commit_turn / reset below. A check is
+            # one forward pass and always terminates, so wait generously.
+            check_t.join(timeout=30.0)
+
+        while True:
+            # 1) guard results — a block or guard error ends the turn here
+            try:
+                while True:
+                    res = check_res.get_nowait()
+                    outstanding = False
+                    if res[0] == "error":
+                        teardown(abort=True)
+                        yield {"type": "error",
+                               "message": f"guard check failed: {res[1]}"}
+                        self.messages.pop()
+                        return
+                    _, p, n_tok, ms, snap_len = res
+                    last_token_count = n_tok
+                    checks.append({"n_tokens": n_tok, "p_harmful": p, "ms": ms})
+                    self._record_check(p, ms)
+                    ema_ms = ms if ema_ms is None else 0.5 * ema_ms + 0.5 * ms
+                    yield {"type": "check", "n_tokens": n_tok,
+                           "p_harmful": p, "ms": round(ms, 1)}
+                    if p >= self.threshold:
+                        blocked = True
+                        block_p = p
+                        block_n = n_tok
+                        self._blocks += 1
+                        finish_reason = "blocked"
+                        break
+                    with cond:
+                        frontier["verified"] = max(frontier["verified"], snap_len)
+                        cond.notify_all()
+            except queue.Empty:
+                pass
+            if blocked:
+                break
+
+            with cond:
+                text = buf["text"]
+                reasoning = buf["reasoning"]
+                verified = frontier["verified"]
+                is_done = buf["done"]
+                stream_error = buf["error"]
+
+            # 2) stream error from the producer
+            if stream_error:
+                teardown(abort=True)
+                yield {"type": "error", "message": stream_error}
+                self.messages.pop()
+                return
+
+            # 3) reasoning passes through live (unguarded, as before)
+            if reasoning_shown < len(reasoning):
+                yield {"type": "reasoning", "text": reasoning[reasoning_shown:]}
+                reasoning_shown = len(reasoning)
+                continue
+
+            # 4) paced release of the verified frontier (~50 ms slices, so a
+            #    block result is reacted to within a slice)
+            if displayed < verified:
+                pps = pace_s_per_char()
+                n_slice = max(2, min(40, int(round(0.05 / pps))))
+                piece = text[displayed:displayed + n_slice]
+                displayed += len(piece)
+                yield {"type": "token", "text": piece}
+                time.sleep(pps * len(piece))
+                continue
+
+            # 5) feed the checker the next checkpoint. Char-gated before the
+            #    O(n) tokenize: chars >= tokens always, so a small char delta
+            #    proves the token delta is small too.
+            if not outstanding and not is_done \
+                    and len(text) - submitted_chars >= self.check_every:
+                n_tok = len(self.guard.tokenizer.encode(
+                    text, add_special_tokens=False))
+                if n_tok - last_token_count >= self.check_every:
+                    try:
+                        check_req.put_nowait(text)
+                        submitted_chars = len(text)
+                        outstanding = True
+                        continue
+                    except queue.Full:
+                        pass
+
+            # 6) clean finish: stream done, checker idle, display caught up
+            if is_done and not outstanding and displayed == verified:
+                break
+
+            with cond:
+                cond.wait(timeout=0.05)
+
+        teardown(abort=blocked)
+
+        content_so_far = buf["text"]
+        reasoning_so_far = buf["reasoning"]
+        if finish_reason is None:
+            finish_reason = buf["finish_reason"]
 
         # Final check at stream end (short responses like refusals never reach
-        # a mid-stream checkpoint) — unless already blocked.
+        # a mid-stream checkpoint) — unless already blocked. The checker thread
+        # is joined by now, so this synchronous call cannot race it. Skipped
+        # when the last mid-stream check already covered the full response.
         if not blocked:
-            try:
-                p, n_tok, ms = self.guard.check_incremental(content_so_far)
-                checks.append({"n_tokens": n_tok, "p_harmful": p, "ms": ms})
-                self._record_check(p, ms)
-                yield {"type": "check", "n_tokens": n_tok, "p_harmful": p,
-                       "ms": round(ms, 1)}
-                if p >= self.threshold and content_so_far:
-                    blocked = True
-                    block_p = p
-                    block_n = n_tok
-                    self._blocks += 1
-                    finish_reason = "blocked"
-            except Exception as e:
-                yield {"type": "error", "message": f"final check failed: {e!r}"}
+            n_final = len(self.guard.tokenizer.encode(
+                content_so_far, add_special_tokens=False))
+            if not checks or checks[-1]["n_tokens"] < n_final:
+                try:
+                    p, n_tok, ms = self.guard.check_incremental(content_so_far)
+                    checks.append({"n_tokens": n_tok, "p_harmful": p, "ms": ms})
+                    self._record_check(p, ms)
+                    yield {"type": "check", "n_tokens": n_tok, "p_harmful": p,
+                           "ms": round(ms, 1)}
+                    if p >= self.threshold and content_so_far:
+                        blocked = True
+                        block_p = p
+                        block_n = n_tok
+                        self._blocks += 1
+                        finish_reason = "blocked"
+                except Exception as e:
+                    yield {"type": "error", "message": f"final check failed: {e!r}"}
+
+        # A passed final check clears the tail: release whatever is left.
+        if not blocked:
+            while displayed < len(content_so_far):
+                piece = content_so_far[displayed:displayed + 40]
+                displayed += len(piece)
+                yield {"type": "token", "text": piece}
+                time.sleep(pace_s_per_char() * len(piece))
 
         # Update model-visible history. On a block the real partial NEVER
         # reaches the model — a fixed notice is substituted instead.
@@ -673,6 +880,9 @@ class GuardedSession:
             "n_tokens": block_n if blocked else (checks[-1]["n_tokens"] if checks else 0),
             "finish_reason": finish_reason,
             "partial_response": content_so_far,
+            # Paced verified display: how much of partial_response the user
+            # actually SAW (always <= the guard-cleared frontier). Evidence.
+            "n_shown_chars": displayed,
             # A block ends the conversation — see the module docstring.
             "conversation_reset": blocked,
         }
@@ -688,11 +898,6 @@ class GuardedSession:
         yield {"type": "verdict", **verdict}
 
     # ---- internals --------------------------------------------------------
-    def _check_due(self, content_so_far, last_token_count):
-        n = self.guard.tokenizer.encode(content_so_far, add_special_tokens=False)
-        cur = len(n)
-        return cur - last_token_count >= self.check_every
-
     def _record_check(self, p, ms):
         self._checks_run += 1
         self._check_latencies.append(ms)

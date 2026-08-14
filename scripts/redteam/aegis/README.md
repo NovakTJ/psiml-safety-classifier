@@ -4,6 +4,32 @@ Guarded chat with Qwen3.5-9B (OpenRouter) watched by the Gemma-3-1B LoRA
 exchange classifier, with prompt pre-screening and mid-stream blocking.
 Spec: `PLAN.md`. Engine: `core.py`.
 
+## Display: paced verified streaming ("fake streaming")
+
+The UI never forwards raw Qwen deltas. `send()` buffers the OpenRouter stream
+(bounded read-ahead ~2 chunks, so the target can't outrun the guard),
+classifies the growing buffer every `--check-every` tokens in a checker
+thread, and releases text only up to the last guard-cleared frontier, paced
+to drain one chunk in roughly one check latency. A block therefore never
+shows unverified text — the reveal just stops. On CUDA the pace collapses to
+near-real-time automatically.
+
+Why not live/stream-then-classify (measured on this laptop, CPU guard,
+`tests/bench_speeds.py`, 2026-08-14, two runs):
+
+| speed | run 1 | run 2 |
+|---|---|---|
+| Qwen3.5-9B via OpenRouter | ~47 tok/s (TTFT 3.4s) | ~162 tok/s (TTFT 3.3s) |
+| guard check, 50-token chunk | 3.2–5.7s (~9–16 tok/s) | 6.6–12s (~4–8 tok/s) |
+
+The CPU guard is 4–10x slower than the stream, so synchronous checking
+halved the display rate into burst/pause stutter, and live unverified
+display would have left the guard 100+ tokens behind — a "blocked at token
+50" banner landing after the whole answer was visible. Paced verified
+display trades a slower-but-steady trickle (~check-latency/50 per token) for
+hard guarantees. First visible token ≈ pre-check + TTFT + first chunk check
+(~10–15s on CPU; watch the sparkline for guard activity in the meantime).
+
 ## Setup (off-cluster: laptop / GCP VM)
 
 On the **cluster** everything just works (`ccpp_env`, `/data/models`, adapter in

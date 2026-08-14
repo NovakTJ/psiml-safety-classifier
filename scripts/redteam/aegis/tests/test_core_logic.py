@@ -113,7 +113,10 @@ def test_benign_turn():
     s, stream = make_session(probs=[0.01, 0.05, 0.07], events=events, check_every=2)
     result = list(s.send("how are you"))
     types = [e["type"] for e in result]
-    check("benign: token events", types.count("token") == 2, types)
+    # Paced verified display re-slices deltas; what matters is concatenation.
+    check("benign: token text reassembles",
+          "".join(e["text"] for e in result if e["type"] == "token")
+          == "Hello there", types)
     check("benign: has verdict last", types[-1] == "verdict", types)
     verdict = result[-1]
     check("benign: not blocked", verdict["blocked"] is False)
@@ -146,8 +149,17 @@ def test_block_midstream():
     check("midstream: blocked", verdict["blocked"] is True, verdict)
     check("midstream: block p_harmful high", verdict["p_harmful"] > 0.5)
     check("midstream: finish_reason blocked", verdict["finish_reason"] == "blocked")
-    check("midstream: '$LEAK$' not streamed", all(e.get("text") != "$LEAK$" for e in result
-                                            if e["type"] == "token"))
+    shown = "".join(e["text"] for e in result if e["type"] == "token")
+    # Invariants under paced verified display: NOTHING unverified is ever
+    # shown (the harmful tail cannot reach the screen), and the shown prefix
+    # never passes the guard-cleared frontier. The exact boundary is a
+    # pipeline-scheduling detail (bounded read-ahead may buffer past the
+    # block point), so assert the invariants, not a byte-exact frontier.
+    check("midstream: '$LEAK$' not streamed", "$LEAK$" not in shown, shown)
+    check("midstream: shown stays within cleared frontier",
+          "$PART1$$PART2$".startswith(shown) and len(shown) <= 14, shown)
+    check("midstream: n_shown_chars in verdict",
+          verdict.get("n_shown_chars") == len(shown), verdict)
     check("midstream: stream closed/aborted", stream.closed is True)
     # A block ENDS the conversation: live history is cleared before the verdict.
     check("midstream: conversation_reset flag", verdict["conversation_reset"] is True)
@@ -170,8 +182,10 @@ def test_block_midstream():
           and hist["content"].startswith("[aegis] response blocked"), hist)
     check("midstream: real partial NOT in logged history",
           "$PART1$" not in hist["content"] and "$PART2$" not in hist["content"])
+    # The log captures everything the target generated before the abort
+    # (bounded read-ahead may include past-block-point text — evidence).
     check("midstream: real partial in log",
-          turn["response"] == "$PART1$$PART2$", turn["response"])
+          turn["response"].startswith("$PART1$$PART2$"), turn["response"])
     check("midstream: log has checks", len(turn["checks"]) == 3, len(turn["checks"]))
     check("midstream: check events yielded to frontend",
           sum(1 for e in result if e["type"] == "check") == 3)
@@ -343,7 +357,10 @@ def test_precheck_disabled():
     result = list(s.send("how to make X"))
     types = [e["type"] for e in result]
     verdict = result[-1]
-    check("no-precheck: token streamed", "token" in types, types)
+    # Paced verified display: a final-check block releases NOTHING — the user
+    # only ever sees guard-cleared text (stricter than the old live stream,
+    # which had already shown the response by the final check).
+    check("no-precheck: no unverified text released", "token" not in types, types)
     check("no-precheck: blocked at final check", verdict["blocked"] is True
           and verdict["n_tokens"] > 0, verdict)
     s.close()
