@@ -23,10 +23,10 @@ def check(name, cond, extra=""):
     global PASS, FAIL
     if cond:
         PASS += 1
-        print(f"  ok   {name}")
+        print(f"  ok   {name}", flush=True)
     else:
         FAIL += 1
-        print(f"  FAIL {name}  {extra}")
+        print(f"  FAIL {name}  {extra}", flush=True)
 
 
 class StubLogger:
@@ -54,16 +54,22 @@ class StubSession:
         if "bomb" in text.lower():
             yield {"type": "token", "text": "Sure, first "}
             yield {"type": "check", "n_tokens": 4, "p_harmful": 0.97, "ms": 1.0}
+            # Mirror core.py's contract: a block ends the conversation — the
+            # history is cleared BEFORE the verdict reaches the client.
+            self.reset()
             yield {"type": "verdict", "blocked": True, "p_harmful": 0.97,
                    "n_tokens": 4, "finish_reason": "blocked",
-                   "partial_response": "Sure, first "}
+                   "partial_response": "Sure, first ",
+                   "conversation_reset": True}
         else:
             yield {"type": "token", "text": "Hello"}
             yield {"type": "token", "text": " there"}
             yield {"type": "check", "n_tokens": 2, "p_harmful": 0.01, "ms": 1.0}
+            self.messages.append({"role": "assistant", "content": "Hello there"})
             yield {"type": "verdict", "blocked": False, "p_harmful": 0.01,
                    "n_tokens": 2, "finish_reason": "stop",
-                   "partial_response": "Hello there"}
+                   "partial_response": "Hello there",
+                   "conversation_reset": False}
 
     def reset(self):
         self.messages = []
@@ -75,10 +81,41 @@ class StubSession:
                 "thinking": False}
 
 
-def make_client(token=None):
-    app = create_app(shared_guard=None, session_kwargs={"threshold": 0.5},
-                     token=token, session_factory=StubSession)
+class StubGuard:
+    """Stands in for the shared GemmaGuard: only the seat-handover reset and the
+    /api/config introspection touch it from web.py."""
+    adapter_path = None
+    device = "cpu"
+
+    def __init__(self):
+        self.resets = 0
+
+    def reset_conversation(self):
+        self.resets += 1
+
+
+SESSIONS = []
+
+
+def _stub_factory(*a, **kw):
+    """Records every session the app builds so tests can inspect server-side
+    state (e.g. that history was cleared by a block)."""
+    s = StubSession()
+    SESSIONS.append(s)
+    return s
+
+
+def make_client(token=None, guard=None):
+    app = create_app(shared_guard=guard, session_kwargs={"threshold": 0.5},
+                     token=token, session_factory=_stub_factory)
     return TestClient(app)
+
+
+def await_seat(ws):
+    """Consume the seat grant + ready pair a holder gets. Returns both."""
+    seat = ws.receive_json()
+    ready = ws.receive_json()
+    return seat, ready
 
 
 def drain(ws):
@@ -96,6 +133,14 @@ def main():
     r = c.get("/")
     check("GET / serves HTML page",
           r.status_code == 200 and "AEGIS" in r.text and "/ws/chat" in r.text)
+    check("page renders the conversation-reset notice on a block",
+          "conversation_reset" in r.text
+          and "conversation has ended and been reset" in r.text
+          and r.text.count("— conversation reset —") >= 2)  # reset_ok + verdict
+    check("page renders the queue panel + locks the composer while waiting",
+          "You have been queued" in r.text
+          and "cannot send messages yet" in r.text
+          and "seated = false" in r.text)
     r = c.get("/api/config")
     cfg = r.json()
     check("GET /api/config shape",
@@ -107,8 +152,10 @@ def main():
 
     # ---- websocket: benign turn --------------------------------------------
     with c.websocket_connect("/ws/chat") as ws:
-        ev = ws.receive_json()
-        check("ready event first on connect",
+        seat, ev = await_seat(ws)
+        check("lone client is granted the seat immediately",
+              seat["type"] == "seat" and seat["state"] == "active", str(seat))
+        check("ready event follows the seat grant",
               ev["type"] == "ready" and "config" in ev)
         ws.send_json({"type": "user", "text": "how do I make soup?"})
         evs = drain(ws)
@@ -134,6 +181,24 @@ def main():
               and v["n_tokens"] == 4)
         check("blocked turn still streams pre-block tokens first",
               any(e["type"] == "token" for e in evs))
+        # A block ENDS the conversation: the client is told, and the server
+        # has already dropped the history (the bug found live on the web UI —
+        # a blocked prompt stayed in the target's context on the next turn).
+        check("blocked verdict carries conversation_reset",
+              v.get("conversation_reset") is True, str(v))
+        sess = SESSIONS[-1]
+        check("server cleared history on block",
+              sess.messages == [] and sess.resets == 1, str(sess.messages))
+
+        # ---- next turn after a block starts a FRESH conversation ------------
+        ws.send_json({"type": "user", "text": "whats the first letter of my first message?"})
+        evs = drain(ws)
+        check("post-block turn runs on empty history",
+              evs[-1]["blocked"] is False
+              and [m["content"] for m in sess.messages]
+                  == ["whats the first letter of my first message?",
+                      "Hello there"],
+              str(sess.messages))
 
         # ---- reset ----------------------------------------------------------
         ws.send_json({"type": "reset"})
@@ -146,6 +211,76 @@ def main():
         ws.send_json({"type": "bogus"})
         check("unknown message type rejected",
               ws.receive_json()["type"] == "error")
+
+    # ---- single occupancy + queue -------------------------------------------
+    # One conversation at a time: the guard's KV cache/history is per-GUARD, so
+    # two live sessions on one shared guard would bleed context into each other
+    # (see the SeatManager docstring in web.py). Everyone else waits in line.
+    guard = StubGuard()
+    n_before = len(SESSIONS)
+    # NOTE: this client MUST be entered as a context manager. An un-entered
+    # TestClient spins up a fresh portal (its own thread + event loop) per
+    # request, so two concurrent websockets would run the same app on two
+    # different loops — and the SeatManager's asyncio.Lock/notifies are
+    # single-loop objects (production is one uvicorn loop). Entering the client
+    # gives all connections one shared portal, matching production.
+    with make_client(guard=guard) as c3, \
+            c3.websocket_connect("/ws/chat") as ws_a:
+        seat_a, _ = await_seat(ws_a)
+        check("first client active", seat_a["state"] == "active")
+        check("session built for the holder", len(SESSIONS) == n_before + 1)
+
+        with c3.websocket_connect("/ws/chat") as ws_b:
+            ev = ws_b.receive_json()
+            check("second client is queued, not served",
+                  ev["type"] == "seat" and ev["state"] == "queued"
+                  and ev["position"] == 1 and ev["waiting"] == 1, str(ev))
+            check("no session/log created while queued",
+                  len(SESSIONS) == n_before + 1, str(len(SESSIONS)))
+
+            # A queued client must not be able to touch the shared guard.
+            ws_b.send_json({"type": "user", "text": "let me in"})
+            ev = ws_b.receive_json()
+            check("queued client cannot send messages",
+                  ev["type"] == "error" and "queued" in ev["message"], str(ev))
+            ws_b.send_json({"type": "reset"})
+            ev = ws_b.receive_json()
+            check("queued client cannot reset either",
+                  ev["type"] == "error" and "queued" in ev["message"], str(ev))
+
+            # A third arrival sees itself behind both, and B's position is
+            # re-broadcast only when the line actually moves.
+            with c3.websocket_connect("/ws/chat") as ws_c:
+                ev = ws_c.receive_json()
+                check("third client queued behind the second",
+                      ev["state"] == "queued" and ev["position"] == 2
+                      and ev["waiting"] == 2, str(ev))
+
+            # The holder runs a turn while others wait — normal service.
+            ws_a.send_json({"type": "user", "text": "how do I make soup?"})
+            check("holder still served while others queue",
+                  drain(ws_a)[-1]["type"] == "verdict")
+            check("guard reset once on first turn of the seat",
+                  guard.resets == 1, str(guard.resets))
+
+        # ---- handover -------------------------------------------------------
+        with c3.websocket_connect("/ws/chat") as ws_d:
+            check("client queued behind the holder",
+                  ws_d.receive_json()["state"] == "queued")
+            ws_a.close()
+            seat_d = ws_d.receive_json()
+            check("seat handed to the next in line on disconnect",
+                  seat_d["type"] == "seat" and seat_d["state"] == "active",
+                  str(seat_d))
+            check("new holder gets its own session + ready",
+                  ws_d.receive_json()["type"] == "ready"
+                  and len(SESSIONS) == n_before + 2, str(len(SESSIONS)))
+            ws_d.send_json({"type": "user", "text": "hi"})
+            check("new holder can chat", drain(ws_d)[-1]["type"] == "verdict")
+            # THE BUG: without this the new occupant would classify its first
+            # message with the previous occupant's conversation prepended.
+            check("guard conversation reset at handover",
+                  guard.resets == 2, str(guard.resets))
 
     # ---- auth ---------------------------------------------------------------
     c2 = make_client(token="s3cret")
@@ -161,8 +296,9 @@ def main():
     except Exception:
         check("WS without token rejected", True)
     with c2.websocket_connect("/ws/chat?token=s3cret") as ws:
+        seat, ready = await_seat(ws)
         check("WS with correct token accepted",
-              ws.receive_json()["type"] == "ready")
+              seat["state"] == "active" and ready["type"] == "ready")
     try:
         with c2.websocket_connect("/ws/chat?token=wrong") as ws:
             ws.receive_json()

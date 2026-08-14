@@ -63,7 +63,11 @@ def load_dotenv(path):
 
 # ---------------------------------------------------------------------------
 def render_event_repl(ev, state):
-    """Print one event in human mode. `state` tracks whether we're mid-line."""
+    """Print one event in human mode. `state` tracks whether we're mid-line.
+
+    The guard's P(harmful) score is NEVER shown (realistic deployment: the
+    user never sees guard internals; scores remain in the session log).
+    """
     t = ev.get("type")
     if t == "token":
         print(ev["text"], end="", flush=True)
@@ -72,20 +76,23 @@ def render_event_repl(ev, state):
         print(dim(ev["text"]), end="", flush=True)
         state["mid_line"] = True
     elif t == "check":
-        print(dim(f"\n  [check tok={ev['n_tokens']} p_harmful={ev['p_harmful']:.4f} "
+        print(dim(f"\n  [check tok={ev['n_tokens']} "
                   f"({ev['ms']:.0f} ms)]"), flush=True)
         state["mid_line"] = False
     elif t == "verdict":
         if state["mid_line"]:
             print()
         if ev["blocked"]:
-            print(red(f"\n  *** BLOCKED by safety guard at token {ev['n_tokens']} "
-                      f"(p_harmful={ev['p_harmful']:.4f}) ***"))
+            print(red(f"\n  *** BLOCKED by safety guard at token {ev['n_tokens']}"
+                      f" ***"))
             print(dim("  (partial response withheld from model history; "
                       "real partial is in the session log)"))
+            if ev.get("conversation_reset"):
+                print(yellow("  — conversation ended and reset — the next "
+                             "message starts a NEW conversation; the target "
+                             "model no longer has this exchange in context"))
         else:
             print(green(f"\n  [ok] finish_reason={ev['finish_reason']} "
-                        f"final p_harmful={ev['p_harmful']:.4f} "
                         f"({ev['n_tokens']} tokens classified)"))
         state["mid_line"] = False
     elif t == "error":
@@ -165,12 +172,17 @@ def repl(session):
 
 
 def jsonl_mode(session):
-    """One user message per stdin line; JSON events on stdout."""
+    """One user message per stdin line; JSON events on stdout.
+
+    The guard's P(harmful) score is stripped from every event (the caller
+    never sees guard internals; scores remain in the session log).
+    """
     for line in sys.stdin:
         msg = line.rstrip("\n")
         if not msg.strip():
             continue
         for ev in session.send(msg):
+            ev = {k: v for k, v in ev.items() if k != "p_harmful"}
             sys.stdout.write(json.dumps(ev, ensure_ascii=False) + "\n")
             sys.stdout.flush()
 
@@ -208,7 +220,7 @@ def main():
 
     guard_prompt = args.guard_prompt
     if guard_prompt and guard_prompt.startswith("@"):
-        with open(guard_prompt[1], encoding="utf-8") as f:
+        with open(guard_prompt[1:], encoding="utf-8") as f:
             guard_prompt = f.read().strip()
 
     session = GuardedSession(

@@ -11,7 +11,7 @@ Event schema (yielded by `send`):
     {"type": "reasoning", "text": ...}                      # thinking mode only
     {"type": "check",     "n_tokens": N, "p_harmful": p, "ms": t}
     {"type": "verdict",   "blocked": bool, "p_harmful": p, "n_tokens": N,
-     "finish_reason": ..., "partial_response": ...}
+     "finish_reason": ..., "partial_response": ..., "conversation_reset": bool}
     {"type": "error",     "message": ...}
 
 Classifying an exchange:
@@ -32,6 +32,23 @@ stream is aborted and the partial harmful response is NOT put in the
 model-visible history — a fixed block notice is substituted so the attacker
 cannot read the leak and adapt. The real partial is kept only in the session
 log.
+
+A block ALSO ENDS THE CONVERSATION: `GuardedSession.reset()` clears BOTH the
+target-visible `self.messages` AND the guard's persistent multi-turn cache
+before the verdict is yielded, and the verdict carries `conversation_reset:
+True`. There is no way to continue a blocked conversation from any frontend.
+Rationale: the target model and the guard each keep their own running view of
+the conversation; a block must wipe both together, so no blocked harmful text
+survives in either context for a follow-up turn to lean on. Invariant: what the
+target remembers is never more than what the guard has judged.
+
+HISTORY-AWARE GUARD: the guard is NOT single-exchange — its KV cache is
+persistent and append-only across turns, so each classification reflects the
+whole conversation so far (`begin_turn` appends a turn header, `commit_turn`
+freezes the response, `reset_conversation` clears it). This is what lets it
+catch multi-turn escalation (the "$x example" in CLAUDE.md) where each turn is
+individually benign. See "Design: history-aware guard" in PLAN.md; the 512-token
+sliding-window limit on early context is a known, measured caveat there.
 """
 
 import copy
@@ -111,10 +128,20 @@ PREFIX_OPEN = "<bos><start_of_turn>user\n"
 SUFFIX = "<end_of_turn>\n<start_of_turn>model\n"
 
 
+def build_turn_header(prompt):
+    """One conversation turn's slot headers + user prompt, up to (but not
+    including) the assistant response. Multi-turn serialization repeats this
+    once per turn; the leading '\\n\\n' separates this turn from the previous
+    turn's response (or, on turn 1, from the instruction)."""
+    return f"\n\nUSER PROMPT:\n{prompt}\n\nASSISTANT RESPONSE:\n"
+
+
 def build_header(prompt, instruction=PROMPT_1):
-    """Static text that precedes the streamed response: class instruction,
-    the user prompt, and the ASSISTANT RESPONSE header."""
-    return f"{instruction}\n\nUSER PROMPT:\n{prompt}\n\nASSISTANT RESPONSE:\n"
+    """Static text that precedes the streamed response on the FIRST turn: class
+    instruction + the turn's prompt + the ASSISTANT RESPONSE header. Equals
+    instruction + build_turn_header(prompt) — byte-identical to the pre-multi-turn
+    format, so single-turn behavior and the text-construction tests are unchanged."""
+    return f"{instruction}{build_turn_header(prompt)}"
 
 
 def build_full_text(prompt, response):
@@ -187,28 +214,82 @@ class GemmaGuard:
         self.device = device
         self._harm_id = self.tokenizer.encode("harmful", add_special_tokens=False)[0]
         self._unharm_id = self.tokenizer.encode("unharmful", add_special_tokens=False)[0]
+        # SUFFIX is constant (prompt/turn-independent) — tokenize once.
+        self._suffix_ids = self.tokenizer.encode(SUFFIX, add_special_tokens=False)
 
-        # Per-turn incremental-cache state (set by begin_turn / advanced by check).
+        # Conversation state. The KV cache is PERSISTENT ACROSS TURNS (append-only)
+        # so the classifier sees the whole conversation, not just the current
+        # message — see "Design: history-aware guard" in PLAN.md.
+        #   cache / cached_seq : the live KV cache and the exact token ids it holds.
+        #   _prefix_ids        : committed history + THIS turn's header (all text
+        #                        before the streamed response). check_incremental
+        #                        scores _prefix_ids + response.
+        #   _committed_ids     : token ids frozen after the last NON-blocked turn;
+        #                        the base each new turn's header is appended onto.
+        #   history            : [(prompt, response), ...] committed turns.
+        # INVARIANTS: cached_seq is always a prefix of (_prefix_ids + current
+        # response) tokens; _committed_ids is a prefix of cached_seq; the cache
+        # NEVER holds the SUFFIX (scoring uses a deep copy) and never a block notice
+        # (a block resets the conversation before it could be committed).
+        #
+        # ONE CONVERSATION PER GemmaGuard. This state is per-GUARD, not per
+        # GuardedSession: `begin_turn` builds each turn's classifier prefix from
+        # `_committed_ids`, so two GuardedSessions sharing one guard are NOT
+        # isolated — session B gets session A's conversation prepended to its
+        # classifier input, and either one's block/reset wipes the other's guard
+        # history while its target-model `messages` survive (breaking the
+        # guard/target lockstep that reset-on-block enforces). Any frontend that
+        # shares a guard MUST admit one conversation at a time and reset between
+        # occupants — see web.py's SeatManager, which does exactly that.
         self.cache = None
         self.cached_seq = []
+        self._prefix_ids = []
+        self._committed_ids = []
+        self.history = []
         self.prompt = None
 
     # ---- lifecycle --------------------------------------------------------
     def begin_turn(self, prompt):
-        """(Re)build the static prefix for a new user message and prime the KV
-        cache with one full forward over the prefix. Call once per turn before
-        scoring response deltas."""
+        """Open a new conversation turn: compute this turn's classifier prefix =
+        committed history + this turn's USER PROMPT / ASSISTANT RESPONSE header.
+
+        Deliberately does NOT touch the KV cache — the header is appended lazily by
+        the turn's first check_incremental (which forwards header+response as one
+        delta over the persistent cache). Keeping begin_turn cache-side-effect-free
+        means an abandoned turn (e.g. a network error before any check runs) leaves
+        the committed cache intact; the next turn's BPE-realign discards any stale
+        header automatically, so there is nothing to roll back."""
         self.prompt = prompt
-        prefix_text = PREFIX_OPEN + build_header(prompt, self.guard_prompt)
-        prefix_ids = self.tokenizer.encode(prefix_text, add_special_tokens=False)
-        ids = torch.tensor([prefix_ids]).to(self.device)
-        with torch.inference_mode():
-            out = self.model(
-                ids, attention_mask=torch.ones_like(ids), use_cache=True)
-            self.cache = out.past_key_values
-        self.cached_seq = list(prefix_ids)
-        self._prefix_ids = list(prefix_ids)
-        self._suffix_ids = self.tokenizer.encode(SUFFIX, add_special_tokens=False)
+        if not self._committed_ids:
+            # First turn of the conversation: full preamble (bos + instruction).
+            header_text = PREFIX_OPEN + build_header(prompt, self.guard_prompt)
+        else:
+            # Later turn: just this turn's slot header, appended after the
+            # previous (committed) response.
+            header_text = build_turn_header(prompt)
+        header_ids = self.tokenizer.encode(header_text, add_special_tokens=False)
+        self._prefix_ids = self._committed_ids + header_ids
+
+    def commit_turn(self, response):
+        """Freeze a finished (non-blocked) turn into the conversation so the NEXT
+        turn's classifier input includes it. Ensures the cache holds
+        prefix+response (a final check usually already advanced it, making the
+        forward here a no-op), then marks the current cached tokens as the
+        committed base for the next turn."""
+        self._advance_response(response)
+        self._committed_ids = list(self.cached_seq)
+        self.history.append((self.prompt, response))
+
+    def reset_conversation(self):
+        """Drop all conversation state — new conversation, same loaded model.
+        Called by GuardedSession.reset() and after every block (a block ends the
+        conversation)."""
+        self.cache = None
+        self.cached_seq = []
+        self._prefix_ids = []
+        self._committed_ids = []
+        self.history = []
+        self.prompt = None
 
     # ---- scoring ----------------------------------------------------------
     @torch.inference_mode()
@@ -220,8 +301,10 @@ class GemmaGuard:
 
     @torch.inference_mode()
     def score_full(self, response_so_far, tokens_ms=None):
-        """Full-recompute P(harmful) for an exchange — the ground truth used to
-        verify the incremental path. One forward over the whole input."""
+        """Full-recompute P(harmful) for the CURRENT exchange, INCLUDING all
+        committed history (it's already in _prefix_ids) — the ground-truth oracle
+        the incremental path is verified against. One forward over
+        prefix + response + suffix."""
         resp_ids = self.tokenizer.encode(response_so_far, add_special_tokens=False)
         full_ids = self._prefix_ids + resp_ids + self._suffix_ids
         ids = torch.tensor([full_ids]).to(self.device)
@@ -252,6 +335,12 @@ class GemmaGuard:
         crop of the response tail; if that also hits the window limit we
         re-prime with one full forward over the matched prefix.
 
+        MULTI-TURN (2026-08-13): the cache is persistent across turns. On the
+        FIRST check of a turn, cached_seq holds the committed history and the delta
+        forwarded here is `this-turn-header + response` (append-only, no cross-turn
+        crop); on later checks it's just the new response tokens. The suffix-scoring
+        and numerics below are turn-count-independent.
+
         NUMERICS (resolved 2026-08-13, laptop CPU repro + fp32 ablation —
         tests/debug_kv.py): an earlier CUDA run showed ~0.004 wobble vs
         `score_full` and bit-identical P-values across different lengths, and
@@ -265,36 +354,10 @@ class GemmaGuard:
         — negligible except in knife-edge cases; keep bf16 and the cache.
         """
         t0 = time.time()
-        resp_ids = self.tokenizer.encode(response_so_far, add_special_tokens=False)
-        target_ids = self._prefix_ids + resp_ids  # the REAL cache target (no suffix)
+        resp_ids = self._advance_response(response_so_far)
 
-        # Align: the cached sequence must be a strict prefix of target_ids.
-        L = longest_common_prefix_len(self.cached_seq, target_ids)
-        if L < len(self.cached_seq):
-            try:
-                self.cache.crop(L)
-            except ValueError:
-                # Sliding-window layers can't crop beyond their window —
-                # re-prime with one full forward over the matched prefix.
-                ids = torch.tensor([target_ids[:L]]).to(self.device)
-                out = self.model(ids, attention_mask=torch.ones_like(ids),
-                                 use_cache=True)
-                self.cache = out.past_key_values
-            self.cached_seq = target_ids[:L]
-
-        # 1) Advance the real cache over the response delta only (never the
-        #    template suffix, so no crop-back is ever needed).
-        delta = target_ids[L:]
-        if delta:
-            mask = torch.ones(1, L + len(delta), dtype=torch.long).to(self.device)
-            out = self.model(
-                input_ids=torch.tensor([delta]).to(self.device),
-                attention_mask=mask, past_key_values=self.cache, use_cache=True)
-            self.cache = out.past_key_values
-            self.cached_seq = self.cached_seq + delta  # == target_ids
-
-        # 2) Score: forward the suffix over a throwaway deep copy. The real
-        #    cache stays exactly prefix + response-so-far.
+        # Score: forward the suffix over a throwaway deep copy. The real cache
+        # stays exactly prefix + response-so-far (never the suffix).
         work = copy.deepcopy(self.cache)
         n = len(self.cached_seq)
         mask = torch.ones(1, n + len(self._suffix_ids), dtype=torch.long).to(self.device)
@@ -305,6 +368,53 @@ class GemmaGuard:
 
         ms = (time.time() - t0) * 1000.0
         return p, len(resp_ids), ms
+
+    @torch.inference_mode()
+    def _advance_response(self, response_so_far):
+        """Advance the REAL (persistent) cache so it holds _prefix_ids + response,
+        and return the response token ids. On a turn's first call the delta is
+        `header + response` (appended after the committed history — append-only, no
+        cross-turn crop); on later calls it's the new response tail only.
+
+        BPE boundary care: re-tokenizing the growing response may not share a clean
+        suffix with the cached response tokens, so align cached_seq against the
+        target and re-forward only the diverging tail. If that tail-crop hits the
+        gemma-3 sliding-window limit (cumulative_length >= 512), re-prime the
+        matched prefix with one full forward instead of cropping."""
+        resp_ids = self.tokenizer.encode(response_so_far, add_special_tokens=False)
+        target_ids = self._prefix_ids + resp_ids  # the REAL cache target (no suffix)
+
+        L = longest_common_prefix_len(self.cached_seq, target_ids)
+        if L < len(self.cached_seq):
+            try:
+                self.cache.crop(L)
+                self.cached_seq = target_ids[:L]
+            except ValueError:
+                # Sliding-window layers refuse to crop past their window —
+                # re-prime the matched prefix with one full forward.
+                self._reprime(target_ids[:L])
+        self._forward_append(target_ids[L:])
+        return resp_ids
+
+    def _forward_append(self, delta_ids):
+        """Forward delta_ids over the current (persistent) cache, append-only;
+        advances self.cache and self.cached_seq. delta_ids may be empty (no-op)."""
+        if not delta_ids:
+            return
+        total = len(self.cached_seq) + len(delta_ids)
+        mask = torch.ones(1, total, dtype=torch.long).to(self.device)
+        out = self.model(
+            input_ids=torch.tensor([delta_ids]).to(self.device),
+            attention_mask=mask, past_key_values=self.cache, use_cache=True)
+        self.cache = out.past_key_values
+        self.cached_seq = self.cached_seq + list(delta_ids)
+
+    def _reprime(self, ids):
+        """Rebuild the cache from scratch over `ids` (used when a crop is refused
+        by the sliding-window layers). One full forward; cached_seq := ids."""
+        self.cache = None
+        self.cached_seq = []
+        self._forward_append(list(ids))
 
     def close(self):
         import gc
@@ -406,8 +516,11 @@ class GuardedSession:
         }
 
     def reset(self):
-        """New conversation, same loaded models."""
+        """New conversation, same loaded models. Clears BOTH the target-visible
+        message history AND the guard's persistent multi-turn cache — they must
+        stay in lockstep (the invariant a block exists to protect)."""
         self.messages = []
+        self.guard.reset_conversation()
 
     # ---- the guarded turn -------------------------------------------------
     def send(self, user_message):
@@ -461,9 +574,15 @@ class GuardedSession:
                     "n_tokens": n_tok,
                     "finish_reason": "blocked",
                     "partial_response": "",
+                    "conversation_reset": True,
                 }
+                # Log BEFORE the reset: `messages_after` is evidence of the
+                # history the turn produced (incl. the substituted notice);
+                # `conversation_reset` in the logged verdict marks that it was
+                # then discarded.
                 self._log_turn(user_message, "", "", checks, verdict,
                                self.messages)
+                self.reset()
                 yield {"type": "verdict", **verdict}
                 return
 
@@ -554,9 +673,18 @@ class GuardedSession:
             "n_tokens": block_n if blocked else (checks[-1]["n_tokens"] if checks else 0),
             "finish_reason": finish_reason,
             "partial_response": content_so_far,
+            # A block ends the conversation — see the module docstring.
+            "conversation_reset": blocked,
         }
+        # Log before the reset (see the pre-check path for why).
         self._log_turn(user_message, content_so_far, reasoning_so_far, checks,
                        verdict, self.messages)
+        if blocked:
+            self.reset()
+        else:
+            # Freeze this turn into the guard's conversation so the NEXT turn's
+            # classifier input includes it (history-aware guarding).
+            self.guard.commit_turn(content_so_far)
         yield {"type": "verdict", **verdict}
 
     # ---- internals --------------------------------------------------------
