@@ -387,10 +387,13 @@
 
 
   <!-- ==================================================================
-       SLIDE 20 — §8 Red teaming [L].  Table dropped in favor of three plain
-       structural bullets (alias / academic frame / homoglyphs), same
-       plain-list treatment as slide 17 — verbatim examples (toxalbumin,
-       "security seminar", pіpe bоmb) land verbally, not on-screen.
+       SLIDE 20 — §8 Red teaming [L].  Bullets replaced with Novak's
+       two_stage_classifier_bypass.svg diagram (2026-08-15 merge, chosen over
+       the plain-list version) — plain request blocked at input vs technical
+       description passing both stages, three yellow failure annotations.
+       Title kept plural per Lazar's instruction; renumbered to fit this
+       branch's slide count (18, not 19 — the LoRA-regression slide below
+       stays cut, it was never part of Novak's diagram commit).
        ================================================================== -->
   <section class="slide slide--light">
     <img class="logo logo--content" src="psiml-logo.png" alt="">
@@ -398,12 +401,10 @@
       The attacks that worked
     </h1>
 
-    <div class="at" style="--x:130; --y:200; --w:900; --h:320">
-      <ul class="plain-list">
-        <li>Describe it, never name it</li>
-        <li>Wrap it in an academic or professional frame</li>
-        <li>Swap the letters, not the meaning</li>
-      </ul>
+    <div class="at" style="--x:67; --y:170; --w:1075; --h:426">
+      <img class="slide-img" src="two_stage_classifier_bypass.svg"
+           alt="plainly worded request blocked at the input classifier; the same request as a technical description passes input classifier, chat model, and output classifier"
+           style="width:100%; height:100%; object-fit:contain">
     </div>
 
     <div class="slide-number">18</div>
