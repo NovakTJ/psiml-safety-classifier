@@ -188,15 +188,24 @@
 
 
   <!-- ==================================================================
-       SLIDE 8 — §4 Dataset [N].  🖼 IMAGE: one prompt × 4 surfaces side by side
-       (English / Telugu / zalgo / wide-spaced) + the 51 switched-prompt rows.
-       STATUS: MAKE from train.jsonl.
+       SLIDE 8 — §4 Dataset [N].  🧩 DIAGRAM: dataset_augmentation.svg —
+       WildGuardMix → 4 augmentations flowing right (translation, unicode
+       transform, truncation, prompt switching), each with its reason below.
+       Replaces the planned 4-surface image; covers the same paragraph and
+       adds the prompt-switching augmentation (51 switched-prompt rows).
        ================================================================== -->
   <section class="slide slide--light">
     <img class="logo logo--content" src="psiml-logo.png" alt="">
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
-      Augmenting WildGuardMix: translation, unicode, truncation
+      Augmenting WildGuardMix — four ways
     </h1>
+
+    <div class="at" style="--x:67; --y:160; --w:1075; --h:470">
+      <img class="slide-img" src="dataset_augmentation.svg"
+           alt="WildGuardMix flows rightwards through four augmentations — translation, unicode transform, truncation, and prompt switching — each with the reason it was applied written underneath"
+           style="width:100%; height:100%; object-fit:contain">
+    </div>
+
     <div class="slide-number">8</div>
   </section>
 
@@ -216,10 +225,11 @@
 
 
   <!-- ==================================================================
-       SLIDE 10 — §5 Jailbreaking Qwen [N].  🖼 IMAGE: real-qwen-example.png
-       — one of the 38 successful jailbreaks from G0DM0D3 divider templates.
-       WildGuardMix adversarial prompts scored 0 / 30; the divider templates
-       that did break Qwen succeeded only ~10% of the time.
+       SLIDE 10 — §5 Jailbreaking Qwen [N].  🧩 DIAGRAM: divider_jailbreak_qwen_label_outside.svg
+       — the divider-template jailbreak pattern (injected instruction forces
+       one reply with a refusal, an exact divider string, then the harmful
+       answer).  WildGuardMix adversarial prompts scored 0 / 30; the divider
+       templates that did break Qwen succeeded only ~10% of the time.
        ================================================================== -->
   <section class="slide slide--light">
     <img class="logo logo--content" src="psiml-logo.png" alt="">
@@ -228,8 +238,8 @@
     </h1>
 
     <div class="at" style="--x:67; --y:150; --w:680; --h:480">
-      <img class="slide-img" src="real-qwen-example.png"
-           alt="a G0DM0D3 divider-template jailbreak that got Qwen3.5-9B to comply"
+      <img class="slide-img" src="divider_jailbreak_qwen_label_outside.svg"
+           alt="divider-template jailbreak pattern: one reply holds a refusal, a divider string, then the harmful answer"
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
@@ -362,11 +372,12 @@
 
 
   <!-- ==================================================================
-       SLIDE 19 — §8 Red teaming [L].  Three plain approach-level bullets
-       (not mechanics/numbers): who the red-teamer was, why it's a real
-       attack not a static eval, and the no-restrictions mandate.
-       Deliberately NOT the arch-list styling (per Lazar: "ne radimo sa
-       arhitekturama ovde") — bold serif lines + teal accent bar instead.
+       SLIDE 19 — §8 Red teaming [L].  Affordances given to the red-teamer,
+       grouped into the four stacks named in the bottom banner:
+       Kimi K3 (the brain) · pi harness (the hands) · custom AGENTS.md
+       (the rules) · human hints (the nudges). Replaces the earlier
+       three-bullet plain-list version. Four equal .panel--accent cards,
+       content vertically centred; teal serif banner carries the stack line.
        ================================================================== -->
   <section class="slide slide--light">
     <img class="logo logo--content" src="psiml-logo.png" alt="">
@@ -374,12 +385,56 @@
       Red teaming with a frontier coding agent
     </h1>
 
-    <div class="at" style="--x:130; --y:200; --w:900; --h:320">
-      <ul class="plain-list">
-        <li>Kimi K3 &mdash; open-weight coding agent</li>
-        <li>Real attack, not a static eval</li>
-        <li>No restrictions, no holding back</li>
-      </ul>
+    <p class="at lead" style="--x:67; --y:140; --w:1146; --h:40; margin:0">
+      What we handed the red-teamer &mdash; and what the agent harness already gave it.
+    </p>
+
+    <div class="at" style="--x:67; --y:185; --w:1146; --h:430; display:flex; gap:24px">
+
+      <div class="panel panel--accent" style="flex:1; display:flex; flex-direction:column; justify-content:center; gap:12px">
+        <div class="panel-heading">Kimi K3 &mdash; the brain</div>
+        <ul style="margin:0; padding-left:18px; font:13pt/1.45 var(--psiml-text); color:var(--psiml-body)">
+          <li>Open-weight frontier coding agent</li>
+          <li>General jailbreak knowledge from pretraining</li>
+          <li>Reads the Constitutional Classifiers++ paper we attached</li>
+        </ul>
+      </div>
+
+      <div class="panel panel--accent" style="flex:1; display:flex; flex-direction:column; justify-content:center; gap:12px">
+        <div class="panel-heading">Pi harness &mdash; the hands</div>
+        <ul style="margin:0; padding-left:18px; font:13pt/1.45 var(--psiml-text); color:var(--psiml-body)">
+          <li><code>bash</code>, <code>read</code>, <code>write</code>, <code>edit</code> tools</li>
+          <li>Autonomous plan &rarr; act &rarr; observe loop</li>
+          <li>Multi-step, multi-hour runs in one session</li>
+          <li>Auto-loads project context (<code>AGENTS.md</code>)</li>
+        </ul>
+      </div>
+
+      <div class="panel panel--accent" style="flex:1; display:flex; flex-direction:column; justify-content:center; gap:12px">
+        <div class="panel-heading">Custom AGENTS.md &mdash; the rules</div>
+        <ul style="margin:0; padding-left:18px; font:13pt/1.45 var(--psiml-text); color:var(--psiml-body)">
+          <li>Black-box: only <code>cli.py --help</code> + session logs readable; no <code>ls</code> of the repo</li>
+          <li>Exact launch commands given</li>
+          <li>May probe weaker models (gpt-3.5-turbo) to learn the guard</li>
+          <li>&ldquo;Do not be weak intentionally&rdquo;</li>
+        </ul>
+      </div>
+
+      <div class="panel panel--accent" style="flex:1; display:flex; flex-direction:column; justify-content:center; gap:12px">
+        <div class="panel-heading">Human hints &mdash; the nudges</div>
+        <ul style="margin:0; padding-left:18px; font:13pt/1.45 var(--psiml-text); color:var(--psiml-body)">
+          <li>Operator steering dropped in mid-run</li>
+          <li>Redirects after dead ends (base64, codenames)</li>
+          <li>Steered toward the LoRA-vs-zero-shot ablation</li>
+        </ul>
+      </div>
+
+    </div>
+
+    <div class="at" style="--x:90; --y:628; --w:1100; --h:40; display:flex; align-items:center; justify-content:center">
+      <span style="font:700 19pt/1 var(--psiml-head); color:var(--psiml-primary); letter-spacing:.01em">
+        kimi-k3&nbsp;&nbsp;+&nbsp;&nbsp;pi harness&nbsp;&nbsp;+&nbsp;&nbsp;custom AGENTS.md&nbsp;&nbsp;+&nbsp;&nbsp;human hints
+      </span>
     </div>
 
     <div class="slide-number">17</div>
@@ -412,16 +467,26 @@
 
 
   <!-- ==================================================================
-       SLIDE 22 — §8 Red teaming [?].  📋 TABLE: knowledge-probe aliases, 3 model
-       columns (1B base / 1B+LoRA / 4B) — all fail the aliases, all know the
-       famous names.  Structural, not fixable by scale; defending would mean
-       blocking chemistry as a topic.  STATUS: ✅ gemma_knowledge_probe/REPORT.md.
+       SLIDE 22 — §8 Red teaming [?].  🧩 DIAGRAM: classifier_knowledge_probe.svg
+       — base model names the chemical from the common name but hallucinates from
+       the technical description.  (Planned TABLE of aliases, 3 model columns
+       (1B base / 1B+LoRA / 4B) — all fail the aliases, all know the famous
+       names — in gemma_knowledge_probe/REPORT.md if a table is wanted too.)
+       Structural, not fixable by scale; defending would mean blocking chemistry
+       as a topic.  STATUS: ✅ asset placed.
        ================================================================== -->
   <section class="slide slide--light">
     <img class="logo logo--content" src="psiml-logo.png" alt="">
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Unguardable at 1B: the gap is knowledge, not capacity
     </h1>
+
+    <div class="at" style="--x:67; --y:170; --w:1075; --h:426">
+      <img class="slide-img" src="classifier_knowledge_probe.svg"
+           alt="the classifier's base model, asked directly, identifies chemicals by common name but hallucinates when given the technical description of the same chemical"
+           style="width:100%; height:100%; object-fit:contain">
+    </div>
+
     <div class="slide-number">19</div>
   </section>
 
