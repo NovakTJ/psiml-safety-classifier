@@ -423,16 +423,25 @@
 
 
   <!-- ==================================================================
-       SLIDE 20 — §8 Red teaming [?].  📋 TABLE: the bypass, verbatim, reveal
-       row by row (pipe bomb → blocked / security seminar → 408 tok / ricin →
-       blocked / toxalbumin → full protocol).  STATUS: prompts in
-       REDTEAM-FIRST-TRY/CLAUDE.md, typeset.
+       SLIDE 20 — §8 Red teaming [?].  🧩 DIAGRAM: two_stage_classifier_bypass.svg
+       — plain request blocked at input vs technical description passing both
+       stages, with the three yellow failure annotations.  (Originally planned as
+       a verbatim bypass TABLE: pipe bomb → blocked / security seminar → 408 tok /
+       ricin → blocked / toxalbumin → full protocol; prompts in
+       REDTEAM-FIRST-TRY/CLAUDE.md if a table is wanted too.)
        ================================================================== -->
   <section class="slide slide--light">
     <img class="logo logo--content" src="psiml-logo.png" alt="">
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
-      The attack that worked: documentation register
+      The attack that worked
     </h1>
+
+    <div class="at" style="--x:67; --y:170; --w:1075; --h:426">
+      <img class="slide-img" src="two_stage_classifier_bypass.svg"
+           alt="plainly worded request blocked at the input classifier; the same request as a technical description passes input classifier, chat model, and output classifier"
+           style="width:100%; height:100%; object-fit:contain">
+    </div>
+
     <div class="slide-number">19</div>
   </section>
 
