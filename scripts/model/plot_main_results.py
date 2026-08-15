@@ -32,7 +32,7 @@ names = [s[0] for s in SYSTEMS]
 f1s = [s[1] for s in SYSTEMS]
 recalls = [s[2] for s in SYSTEMS]
 
-fig, ax = plt.subplots(figsize=(9, 5.5), dpi=170)
+fig, ax = plt.subplots(figsize=(13, 6.4), dpi=170)
 
 x = np.arange(len(names))
 width = 0.35
@@ -45,17 +45,17 @@ for bars in (bars_f1, bars_rec):
     for b in bars:
         h = b.get_height()
         ax.annotate(f"{h:.3f}", xy=(b.get_x() + b.get_width() / 2, h),
-                   xytext=(0, 3), textcoords="offset points",
-                   ha="center", fontsize=8)
+                   xytext=(0, 8), textcoords="offset points",
+                   ha="center", fontsize=13)
 
 ax.set_xticks(x)
-ax.set_xticklabels(names)
-ax.set_ylim(0.6, 1.0)
-ax.set_ylabel("score")
-ax.set_title("Safety classifiers — test set comparison")
+ax.set_xticklabels(names, fontsize=14)
+ax.set_ylim(0.75, 1.02)
+ax.set_ylabel("score", fontsize=16)
+ax.tick_params(axis="y", labelsize=13)
 ax.grid(True, axis="y", alpha=0.3)
 ax.set_axisbelow(True)
-ax.legend(loc="lower right", fontsize=9)
+ax.legend(loc="lower right", fontsize=14)
 fig.tight_layout()
 fig.savefig(OUT_PNG)
 print(f"Saved: {OUT_PNG}")

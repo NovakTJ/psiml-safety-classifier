@@ -215,9 +215,9 @@
       The architecture
     </h1>
 
-    <svg class="at" style="--x:67; --y:145; --w:1146; --h:520"
-         viewBox="0 0 1146 520" role="img"
-         aria-label="User text enters the main model, Qwen3.5-9B. Its text output feeds an enhanced SLM, while its internal activations feed a linear probe. The two together form the ensemble, which outputs safe or unsafe. Qwen3Guard-8B is shown below as the SOTA reference.">
+    <svg class="at" style="--x:67; --y:108; --w:1146; --h:560"
+         viewBox="0 0 1146 560" role="img"
+         aria-label="User text enters Qwen3.5-9B. Its text output feeds a Gemma 3 1B IT plus LoRA classifier, while its internal activations feed a logistic regression probe. The two together form the 1B ensemble, which outputs safe or unsafe. Qwen3Guard-8B is shown below, centred, as the SOTA reference.">
 
       <defs>
         <marker id="ar" viewBox="0 0 10 10" refX="8.5" refY="5"
@@ -228,9 +228,9 @@
       </defs>
 
       <!-- ============ ENSEMBLE LABEL + CONTAINER ============ -->
-      <text x="754" y="38" text-anchor="middle"
-            style="font:700 38px var(--psiml-head); fill:#B4740F">Ensemble</text>
-      <rect x="548" y="55" width="412" height="340" rx="18"
+      <text x="714" y="38" text-anchor="middle"
+            style="font:700 38px var(--psiml-head); fill:#B4740F">Ensemble 1B</text>
+      <rect x="508" y="55" width="412" height="340" rx="18"
             fill="none" stroke="#F19F22" stroke-width="3.5" stroke-dasharray="11 8"/>
 
       <!-- ============ USER ============ -->
@@ -244,53 +244,55 @@
 
       <!-- ============ MAIN MODEL ============ -->
       <rect x="208" y="90" width="290" height="270" rx="14" fill="#146B93"/>
-      <text x="353" y="205" text-anchor="middle" dominant-baseline="central"
-            style="font:700 44px var(--psiml-head); fill:#FFFFFF">Main model</text>
-      <text x="353" y="255" text-anchor="middle" dominant-baseline="central"
-            style="font:400 30px var(--psiml-text); fill:#95E1D9">Qwen3.5-9B</text>
+      <text x="353" y="225" text-anchor="middle" dominant-baseline="central"
+            style="font:700 44px var(--psiml-head); fill:#FFFFFF">Qwen3.5-9B</text>
 
       <!-- ============ TEXT PATH -> SLM ============ -->
-      <path d="M498 135 H 608" stroke="#146B93" stroke-width="4.5"
+      <path d="M498 135 H 576" stroke="#146B93" stroke-width="4.5"
             marker-end="url(#ar)" fill="none"/>
 
       <!-- ============ ACTIVATION PATH -> PROBE ============ -->
-      <path d="M498 315 H 608" stroke="#F19F22" stroke-width="4.5"
+      <path d="M498 315 H 576" stroke="#F19F22" stroke-width="4.5"
             stroke-dasharray="11 8" marker-end="url(#ar)" fill="none"/>
 
       <!-- ============ THE TWO GUARDS ============ -->
-      <rect x="616" y="65" width="326" height="140" rx="12"
+      <rect x="576" y="65" width="326" height="140" rx="12"
             fill="#E3EEF1" stroke="#146B93" stroke-width="2.5"/>
-      <text x="779" y="135" text-anchor="middle" dominant-baseline="central"
-            style="font:700 38px var(--psiml-head); fill:#0C2233">Enhanced SLM</text>
+      <text x="739" y="113" text-anchor="middle" dominant-baseline="central"
+            style="font:700 34px var(--psiml-head); fill:#0C2233">Gemma 3 1B IT</text>
+      <text x="739" y="157" text-anchor="middle" dominant-baseline="central"
+            style="font:700 34px var(--psiml-head); fill:#0C2233">+ LoRA</text>
 
-      <rect x="616" y="245" width="326" height="140" rx="12"
+      <rect x="576" y="245" width="326" height="140" rx="12"
             fill="#E3EEF1" stroke="#146B93" stroke-width="2.5"/>
-      <text x="779" y="315" text-anchor="middle" dominant-baseline="central"
-            style="font:700 38px var(--psiml-head); fill:#0C2233">Linear probe</text>
+      <text x="739" y="293" text-anchor="middle" dominant-baseline="central"
+            style="font:700 34px var(--psiml-head); fill:#0C2233">Logistic</text>
+      <text x="739" y="337" text-anchor="middle" dominant-baseline="central"
+            style="font:700 34px var(--psiml-head); fill:#0C2233">Regression</text>
 
       <!-- ============ MERGE -> VERDICT ============ -->
-      <path d="M942 135 H 972 Q 984 135 984 147 V 213" fill="none"
+      <path d="M902 135 H 932 Q 944 135 944 147 V 213" fill="none"
             stroke="#F19F22" stroke-width="4.5" stroke-linejoin="round"/>
-      <path d="M942 315 H 972 Q 984 315 984 303 V 237" fill="none"
+      <path d="M902 315 H 932 Q 944 315 944 303 V 237" fill="none"
             stroke="#F19F22" stroke-width="4.5" stroke-linejoin="round"/>
-      <circle cx="984" cy="225" r="10" fill="#F19F22"/>
-      <path d="M984 225 H 1030" stroke="#F19F22" stroke-width="4.5"
+      <circle cx="944" cy="225" r="10" fill="#F19F22"/>
+      <path d="M944 225 H 1000" stroke="#F19F22" stroke-width="4.5"
             marker-end="url(#ar)" fill="none"/>
 
-      <rect x="1030" y="130" width="116" height="190" rx="12"
-            fill="#95E1D9" stroke="#146B93" stroke-width="2.5"/>
-      <text x="1088" y="195" text-anchor="middle"
+      <rect x="1000" y="130" width="140" height="190" rx="12"
+            fill="#95E1D9" stroke="#146B93" stroke-width="5"/>
+      <text x="1070" y="195" text-anchor="middle"
             style="font:700 34px var(--psiml-head); fill:#0C2233">Safe</text>
-      <text x="1088" y="255" text-anchor="middle"
+      <text x="1070" y="255" text-anchor="middle"
             style="font:700 34px var(--psiml-head); fill:#0C2233">Unsafe</text>
 
       <!-- ============ REFERENCE ROW ============ -->
-      <path d="M0 405 H 1146" stroke="#5A7484" stroke-width="1.5"
-            stroke-dasharray="3 6" opacity=".5"/>
+      <path d="M0 435 H 1146" stroke="#5A7484" stroke-width="5"
+            stroke-dasharray="18 10" opacity=".8"/>
 
-      <rect x="616" y="425" width="326" height="90" rx="12"
+      <rect x="410" y="465" width="326" height="90" rx="12"
             fill="#FFFFFF" stroke="#5A7484" stroke-width="2.5"/>
-      <text x="779" y="470" text-anchor="middle" dominant-baseline="central"
+      <text x="573" y="510" text-anchor="middle" dominant-baseline="central"
             style="font:700 32px var(--psiml-head); fill:#23404F">Qwen3Guard-8B</text>
 
     </svg>
@@ -304,19 +306,53 @@
        chart, 6 systems, test set 227 (touched once) + 🧩 confusion-matrix inset
        (TP 115 · FN 12 · FP 9 · TN 91).  STATUS: numbers ready, plot MAKE.
        ================================================================== -->
+  <!-- ==================================================================
+       SLIDE — §6 Results [L], build step 1/2 (added 2026-08-16).  Same chart
+       image as the next slide, with a plain background-coloured rectangle
+       painted over Gemma LoRA / Linear probe / Gemma zero-shot -- only
+       Qwen3Guard and Ensemble are visible.  Rectangle boundary computed from
+       matplotlib's own pixel transform (midpoint between the Ensemble and
+       Gemma LoRA bar groups, x=1.5 in data coords) so it lines up exactly
+       with the bar edge, not eyeballed. Superseded the earlier
+       full-width-image + covering-rectangle version (2026-08-16): a
+       background rectangle left the visible bars off-centre (crammed into
+       the left third of a full-width slide), so this now uses an actual
+       PNG crop (main_results_partial.png, same source pixels, cropped not
+       masked) sized to its own aspect ratio and centred on the slide.
+       Next slide is the full five-system chart, no crop -- the reveal.
+       ================================================================== -->
   <section class="slide slide--light">
     <img class="logo logo--content" src="psiml-logo.png" alt="">
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Results: five systems on the held-out test set
     </h1>
 
-    <div class="at" style="--x:155; --y:130; --w:970; --h:575">
+    <div class="at" style="--x:399; --y:140; --w:483; --h:560">
+      <img class="slide-img" src="main_results_partial.png"
+           alt="F1 and harmful recall, Qwen3Guard and Ensemble"
+           style="width:100%; height:100%; object-fit:contain">
+    </div>
+
+    <div class="slide-number">9</div>
+  </section>
+
+
+  <!-- ==================================================================
+       SLIDE — §6 Results [L], build step 2/2: the reveal, no rectangle.
+       ================================================================== -->
+  <section class="slide slide--light">
+    <img class="logo logo--content" src="psiml-logo.png" alt="">
+    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
+      Results: five systems on the held-out test set
+    </h1>
+
+    <div class="at" style="--x:67; --y:140; --w:1146; --h:560">
       <img class="slide-img" src="main_results.png"
            alt="F1 and harmful recall, five systems, test set"
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
-    <div class="slide-number">9</div>
+    <div class="slide-number">10</div>
   </section>
 
 
@@ -337,7 +373,7 @@
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
-    <div class="slide-number">10</div>
+    <div class="slide-number">11</div>
   </section>
 
 
@@ -352,7 +388,7 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       AEGIS: the inference system
     </h1>
-    <div class="slide-number">11</div>
+    <div class="slide-number">12</div>
   </section>
 
 
@@ -367,7 +403,7 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       The ensemble price: the probe gates the classifier
     </h1>
-    <div class="slide-number">12</div>
+    <div class="slide-number">13</div>
   </section>
 
 
@@ -437,7 +473,7 @@
       </span>
     </div>
 
-    <div class="slide-number">13</div>
+    <div class="slide-number">14</div>
   </section>
 
 
@@ -462,7 +498,7 @@
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
-    <div class="slide-number">14</div>
+    <div class="slide-number">15</div>
   </section>
 
 
@@ -487,7 +523,7 @@
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
-    <div class="slide-number">15</div>
+    <div class="slide-number">16</div>
   </section>
 
 
@@ -522,7 +558,7 @@
       </ul>
     </div>
 
-    <div class="slide-number">16</div>
+    <div class="slide-number">17</div>
   </section>
 
 
@@ -532,12 +568,49 @@
        Q&A / contact slide: photos + name + faculty + year + program +
        interests for Lazar and Novak — content pending from the user.
        ================================================================== -->
+  <!-- ==================================================================
+       SLIDE — Q&A closer.  Two-column presenter cards, photo placeholder +
+       name + affiliation, added 2026-08-16.  Photos still to be dropped in
+       (dashed "photo" boxes as placeholders) — swap the placeholder <div>
+       for an <img class="slide-img" ...> once the files exist.
+       ================================================================== -->
   <section class="slide slide--light">
     <img class="logo logo--content" src="psiml-logo.png" alt="">
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
-      Q&amp;A
+      Q&amp;A &mdash; this is us
     </h1>
-    <div class="slide-number">17</div>
+
+    <!-- Novak -->
+    <div class="at" style="--x:250; --y:150; --w:260; --h:320">
+      <img src="novak.jpg" alt="Novak Stijepi&#263;"
+           style="width:100%; height:100%; object-fit:contain; border-radius:16px; background:var(--psiml-panel); display:block">
+    </div>
+    <div class="at" style="--x:170; --y:490; --w:420; --h:190; text-align:center">
+      <div style="font:700 22pt var(--psiml-head); color:var(--psiml-ink)">Novak Stijepi&#263;</div>
+      <div style="margin-top:12px; font:400 17pt var(--psiml-text); color:var(--psiml-body); line-height:1.5">
+        University of Belgrade<br>
+        School of Electrical Engineering<br>
+        Finishing third year &middot; Software Engineering<br>
+        linkedin.com/in/novakstijepic
+      </div>
+    </div>
+
+    <!-- Lazar -->
+    <div class="at" style="--x:770; --y:150; --w:260; --h:320">
+      <img src="lazar.jpg" alt="Lazar Stojanovi&#263;"
+           style="width:100%; height:100%; object-fit:contain; border-radius:16px; background:var(--psiml-panel); display:block">
+    </div>
+    <div class="at" style="--x:690; --y:490; --w:420; --h:190; text-align:center">
+      <div style="font:700 22pt var(--psiml-head); color:var(--psiml-ink)">Lazar Stojanovi&#263;</div>
+      <div style="margin-top:12px; font:400 17pt var(--psiml-text); color:var(--psiml-body); line-height:1.5">
+        Union University<br>
+        School of Computing, Belgrade<br>
+        Finishing third year &middot; Computer Science<br>
+        linkedin.com/in/lazar-stojanovic-450b05271
+      </div>
+    </div>
+
+    <div class="slide-number">18</div>
   </section>
 
 </div>
