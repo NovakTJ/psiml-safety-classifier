@@ -105,11 +105,12 @@
   </section>
 
   <!-- ==================================================================
-       SLIDE 8 — §4 Dataset [N].  🧩 DIAGRAM: dataset_augmentation.svg —
-       WildGuardMix → 4 augmentations flowing right (translation, unicode
-       transform, truncation, prompt switching), each with its reason below.
-       Replaces the planned 4-surface image; covers the same paragraph and
-       adds the prompt-switching augmentation (51 switched-prompt rows).
+       SLIDE 8a — §4 Dataset [N].  Overview of the augmentation pipeline.
+       Split 2026-08-16 into five slides (this one + one per augmentation)
+       because the single-slide version's type was too small to read from
+       the back of the room.  The 0/30 stat moved here from the old
+       "Jailbreaking Qwen" slide (now the appendix): it is the *motivation*
+       for augmenting — the raw adversarial prompts are too easy.
        ================================================================== -->
   <section class="slide slide--light">
     <img class="logo logo--content" src="psiml-logo.png" alt="">
@@ -117,10 +118,27 @@
       Augmenting WildGuardMix — four ways
     </h1>
 
-    <div class="at" style="--x:67; --y:160; --w:1075; --h:470">
+    <div class="at" style="--x:67; --y:150; --w:1146; --h:200">
       <img class="slide-img" src="dataset_augmentation.svg"
-           alt="WildGuardMix flows rightwards through four augmentations — translation, unicode transform, truncation, and prompt switching — each with the reason it was applied written underneath"
-           style="width:100%; height:100%; object-fit:contain">
+           alt="WildGuardMix flows rightwards through four augmentations — translation, unicode transform, truncation, and prompt switching"
+           style="width:100%; height:100%; object-fit:contain; object-position:top">
+    </div>
+
+    <div class="at" style="--x:67; --y:400; --w:1146; --h:230; display:flex; gap:24px; align-items:stretch">
+
+      <div class="panel panel--accent" style="flex:0 0 330px; display:flex; flex-direction:column; justify-content:center">
+        <div class="stat">0&nbsp;/&nbsp;30</div>
+        <div class="stat-label">WildGuardMix adversarial prompts that jailbroke Qwen3.5-9B</div>
+      </div>
+
+      <div class="panel" style="flex:1; display:flex; flex-direction:column; justify-content:center">
+        <p class="body" style="margin:0">The 2024 source data is <strong>English-only, plain-text, and complete-response</strong>
+        &mdash; and its adversarial prompts no longer break a 2026 model. Training on it alone
+        teaches the guard exactly one attack surface.</p>
+        <p class="body" style="margin:14px 0 0">Each augmentation below adds a surface the raw data never covers.
+        Splits stay group-stratified by <code>original_idx</code> &mdash; no exchange appears in two splits.</p>
+      </div>
+
     </div>
 
     <div class="slide-number">4</div>
@@ -128,35 +146,114 @@
 
 
   <!-- ==================================================================
-       SLIDE 10 — §5 Jailbreaking Qwen [N].  💬 STATS-ONLY.  WildGuardMix
-       adversarial prompts scored 0 / 30; the divider templates that did break
-       Qwen succeeded only ~10% of the time.
-       The divider diagram moved to the next slide 2026-08-15 and no art
-       replaces it — the two stat cards now run side by side across the full
-       content width (same flex-row treatment as slide 13), vertically centred.
+       SLIDE 8b — Augmentation 1: Translation.
        ================================================================== -->
   <section class="slide slide--light">
     <img class="logo logo--content" src="psiml-logo.png" alt="">
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
-      Jailbreaking Qwen was the real obstacle
+      Augmentation 1
     </h1>
 
-    <div class="at" style="--x:67; --y:220; --w:1146; --h:360; display:flex; gap:24px">
-
-      <div class="panel panel--accent" style="flex:1; display:flex; flex-direction:column; justify-content:center">
-        <div class="stat">38&nbsp;/&nbsp;300</div>
-        <div class="stat-label">divider-template jailbreaks that succeeded &mdash;
-          ~13%, inconsistent, not reliable</div>
+    <div class="at" style="--x:67; --y:160; --w:1146; --h:120">
+      <div class="panel panel--accent" style="display:flex; flex-direction:column; justify-content:center; height:100%">
+        <div class="panel-heading" style="font-size:26pt">Translation</div>
       </div>
+    </div>
 
-      <div class="panel" style="flex:1; display:flex; flex-direction:column; justify-content:center">
-        <div class="stat">0&nbsp;/&nbsp;30</div>
-        <div class="stat-label">WildGuardMix adversarial prompts that jailbroke it</div>
-      </div>
-
+    <div class="at body" style="--x:67; --y:330; --w:1146; --h:280; font-size:19pt">
+      <p>Harmful prompts and responses translated out of English.</p>
+      <p><strong>Why:</strong> non-English phrasing is a common attack vector &mdash; a guard trained
+      on English alone simply stops seeing the harm. The classifier must not be English-only.</p>
     </div>
 
     <div class="slide-number">5</div>
+  </section>
+
+
+  <!-- ==================================================================
+       SLIDE 8c — Augmentation 2: Unicode / homoglyph transform.
+       🧩 unicode_augmentation_example.svg — the "emai1 sc@m op3ration"
+       example, added 2026-08-16 so the mechanism is concrete.
+       ================================================================== -->
+  <section class="slide slide--light">
+    <img class="logo logo--content" src="psiml-logo.png" alt="">
+    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
+      Augmentation 2
+    </h1>
+
+    <div class="at" style="--x:67; --y:145; --w:1146; --h:70">
+      <div class="panel panel--accent" style="display:flex; flex-direction:column; justify-content:center; height:100%">
+        <div class="panel-heading" style="font-size:22pt">Unicode transform</div>
+      </div>
+    </div>
+
+    <div class="at" style="--x:67; --y:230; --w:1146; --h:290">
+      <img class="slide-img" src="unicode_augmentation_example.svg"
+           alt="the prompt 'How to run an email scam operation?' rewritten with Cyrillic o, digit 1 for l, @ for a and 3 for e"
+           style="width:100%; height:100%; object-fit:contain">
+    </div>
+
+    <div class="at body" style="--x:67; --y:545; --w:1146; --h:150; font-size:17pt">
+      <p><strong>Why:</strong> the obfuscation fools nobody &mdash; a reader, and the chat model, understand
+      the request perfectly well. What it does is <em>slip past the chat model's own safety behaviour</em>:
+      the request no longer looks like the harmful phrasings refusal was trained on, so the model answers.
+      The classifier has to catch what the chat model stopped catching &mdash; and treat character noise
+      like this, rare in honest use, as suspicious in itself.</p>
+    </div>
+
+    <div class="slide-number">6</div>
+  </section>
+
+
+  <!-- ==================================================================
+       SLIDE 8d — Augmentation 3: Truncation (prefix labelling).
+       ================================================================== -->
+  <section class="slide slide--light">
+    <img class="logo logo--content" src="psiml-logo.png" alt="">
+    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
+      Augmentation 3
+    </h1>
+
+    <div class="at" style="--x:67; --y:160; --w:1146; --h:120">
+      <div class="panel panel--accent" style="display:flex; flex-direction:column; justify-content:center; height:100%">
+        <div class="panel-heading" style="font-size:26pt">Truncation</div>
+      </div>
+    </div>
+
+    <div class="at body" style="--x:67; --y:330; --w:1146; --h:280; font-size:19pt">
+      <p>Harmful responses cut at a random point; the prefix inherits the label.</p>
+      <p><strong>Why:</strong> the guard must act <em>mid-response</em>, before the harmful tokens reach
+      the user &mdash; not once the answer is already finished. Without truncated rows it only ever
+      learns to judge complete answers.</p>
+    </div>
+
+    <div class="slide-number">7</div>
+  </section>
+
+
+  <!-- ==================================================================
+       SLIDE 8e — Augmentation 4: Prompt switching.
+       ================================================================== -->
+  <section class="slide slide--light">
+    <img class="logo logo--content" src="psiml-logo.png" alt="">
+    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
+      Augmentation 4
+    </h1>
+
+    <div class="at" style="--x:67; --y:160; --w:1146; --h:120">
+      <div class="panel panel--accent" style="display:flex; flex-direction:column; justify-content:center; height:100%">
+        <div class="panel-heading" style="font-size:26pt">Prompt switching</div>
+      </div>
+    </div>
+
+    <div class="at body" style="--x:67; --y:330; --w:1146; --h:280; font-size:19pt">
+      <p>A benign prompt swapped onto a harmful response.</p>
+      <p><strong>Why:</strong> in the raw data the harm label equals the <em>prompt</em> label on every
+      single row &mdash; so a model can score perfectly while ignoring the response entirely.
+      Switched-prompt rows are the only ones that force it to actually read the answer.</p>
+    </div>
+
+    <div class="slide-number">8</div>
   </section>
 
 
@@ -179,7 +276,7 @@
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
-    <div class="slide-number">6</div>
+    <div class="slide-number">9</div>
   </section>
 
 
@@ -193,7 +290,7 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Teacher-forced activations for the probe
     </h1>
-    <div class="slide-number">7</div>
+    <div class="slide-number">10</div>
   </section>
 
 
@@ -295,7 +392,7 @@
 
     </svg>
 
-    <div class="slide-number">8</div>
+    <div class="slide-number">11</div>
   </section>
 
 
@@ -316,7 +413,7 @@
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
-    <div class="slide-number">9</div>
+    <div class="slide-number">12</div>
   </section>
 
 
@@ -337,7 +434,7 @@
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
-    <div class="slide-number">10</div>
+    <div class="slide-number">13</div>
   </section>
 
 
@@ -352,7 +449,7 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       AEGIS: the inference system
     </h1>
-    <div class="slide-number">11</div>
+    <div class="slide-number">14</div>
   </section>
 
 
@@ -367,7 +464,7 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       The ensemble price: the probe gates the classifier
     </h1>
-    <div class="slide-number">12</div>
+    <div class="slide-number">15</div>
   </section>
 
 
@@ -437,7 +534,7 @@
       </span>
     </div>
 
-    <div class="slide-number">13</div>
+    <div class="slide-number">16</div>
   </section>
 
 
@@ -462,7 +559,7 @@
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
-    <div class="slide-number">14</div>
+    <div class="slide-number">17</div>
   </section>
 
 
@@ -487,7 +584,7 @@
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
-    <div class="slide-number">15</div>
+    <div class="slide-number">18</div>
   </section>
 
 
@@ -522,7 +619,7 @@
       </ul>
     </div>
 
-    <div class="slide-number">16</div>
+    <div class="slide-number">19</div>
   </section>
 
 
@@ -537,7 +634,41 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Q&amp;A
     </h1>
-    <div class="slide-number">17</div>
+    <div class="slide-number">20</div>
+  </section>
+
+
+  <!-- ==================================================================
+       APPENDIX — §5 Jailbreaking Qwen [N].  Moved to the end 2026-08-16
+       (was slide 5).  The 0/30 card moved out to the augmentation-overview
+       slide, where it motivates the augmentations; what stays here is the
+       38/300 divider-template success rate, kept as a backup slide for
+       questions about how the jailbreak corpus was built.
+       ================================================================== -->
+  <section class="slide slide--light">
+    <img class="logo logo--content" src="psiml-logo.png" alt="">
+    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
+      Appendix: jailbreaking Qwen was the real obstacle
+    </h1>
+
+    <div class="at" style="--x:67; --y:220; --w:1146; --h:360; display:flex; gap:24px">
+
+      <div class="panel panel--accent" style="flex:1; display:flex; flex-direction:column; justify-content:center">
+        <div class="stat">38&nbsp;/&nbsp;300</div>
+        <div class="stat-label">divider-template jailbreaks that succeeded &mdash;
+          ~13%, inconsistent, not reliable</div>
+      </div>
+
+      <div class="panel" style="flex:1; display:flex; flex-direction:column; justify-content:center">
+        <p class="body" style="margin:0">Every successful jailbreak had to come from the guarded model
+        itself (Qwen3.5-9B) &mdash; those 38 exchanges are the seed corpus for the probe replays.</p>
+        <p class="body" style="margin:14px 0 0">WildGuardMix's own adversarial prompts scored
+        <strong>0 / 30</strong>; only divider-style templates broke it at all.</p>
+      </div>
+
+    </div>
+
+    <div class="slide-number">21</div>
   </section>
 
 </div>
