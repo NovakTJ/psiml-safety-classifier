@@ -4,32 +4,6 @@ Guarded chat with Qwen3.5-9B (OpenRouter) watched by the Gemma-3-1B LoRA
 exchange classifier, with prompt pre-screening and mid-stream blocking.
 Spec: `PLAN.md`. Engine: `core.py`.
 
-## Display: paced verified streaming ("fake streaming")
-
-The UI never forwards raw Qwen deltas. `send()` buffers the OpenRouter stream
-(bounded read-ahead ~2 chunks, so the target can't outrun the guard),
-classifies the growing buffer every `--check-every` tokens in a checker
-thread, and releases text only up to the last guard-cleared frontier, paced
-to drain one chunk in roughly one check latency. A block therefore never
-shows unverified text — the reveal just stops. On CUDA the pace collapses to
-near-real-time automatically.
-
-Why not live/stream-then-classify (measured on this laptop, CPU guard,
-`tests/bench_speeds.py`, 2026-08-14, two runs):
-
-| speed | run 1 | run 2 |
-|---|---|---|
-| Qwen3.5-9B via OpenRouter | ~47 tok/s (TTFT 3.4s) | ~162 tok/s (TTFT 3.3s) |
-| guard check, 50-token chunk | 3.2–5.7s (~9–16 tok/s) | 6.6–12s (~4–8 tok/s) |
-
-The CPU guard is 4–10x slower than the stream, so synchronous checking
-halved the display rate into burst/pause stutter, and live unverified
-display would have left the guard 100+ tokens behind — a "blocked at token
-50" banner landing after the whole answer was visible. Paced verified
-display trades a slower-but-steady trickle (~check-latency/50 per token) for
-hard guarantees. First visible token ≈ pre-check + TTFT + first chunk check
-(~10–15s on CPU; watch the sparkline for guard activity in the meantime).
-
 ## Setup (off-cluster: laptop / GCP VM)
 
 On the **cluster** everything just works (`ccpp_env`, `/data/models`, adapter in
@@ -79,25 +53,6 @@ Teammates get a URL, nothing else; the server holds the model, adapter and
 OpenRouter key. One process serves the chat page AND the WebSocket endpoint
 (same origin, no CORS).
 
-### One-command public host (`host.sh`)
-
-For a remote friend/demo off a laptop, `host.sh` does the whole thing: random
-token, starts `web.py` on localhost, opens a Cloudflare quick tunnel (downloads
-`cloudflared` to `~/.cache/aegis/` on first run), and prints ONE public
-`https://…trycloudflare.com/?token=…` link — or a clear error + log if anything
-fails. Runs in the foreground; **Ctrl-C tears down both** the server and the
-tunnel (the link dies with it). The tunnel URL is fresh every run.
-
-```bash
-scripts/redteam/aegis/host.sh                    # default guard, print a link
-scripts/redteam/aegis/host.sh --adapter none     # any web.py flag forwards through
-AEGIS_PORT=8399 scripts/redteam/aegis/host.sh     # env: AEGIS_PORT/AEGIS_TOKEN/AEGIS_PY/AEGIS_MODEL
-```
-
-Args after the script forward verbatim to `web.py`; `--host/--port/--token` are
-owned by the script (set port/token via the env vars). Needs `OPENROUTER_API_KEY`
-in the repo `.env`.
-
 ```bash
 # localhost demo
 ~/aegis_env/bin/python scripts/redteam/aegis/web.py --device cpu
@@ -111,46 +66,17 @@ in the repo `.env`.
 
 All `cli.py` engine flags work identically (`--adapter none`, `--model`,
 `--threshold`, `--check-every`, `--thinking`, …). Architecture: ONE shared
-`GemmaGuard` loaded at startup, and **one conversation at a time** — the
-connection holding the guard ("the seat") gets its own `GuardedSession` (own
-history + own session log, `aegis_*_wNNN.jsonl`); everyone else waits in a FIFO
-queue, sees their position in the page's queue panel, and cannot send anything
-until the seat is granted. The guard is reset at handover so an occupant never
-inherits the previous one's conversation.
-
-**Why single occupancy is required, not just polite:** the guard's conversation
-state (KV cache, `_committed_ids`, history) lives on the `GemmaGuard`, not on
-the `GuardedSession`. Two live sessions on one shared guard would (a) classify
-each other's messages with the other's conversation prepended, and (b) wipe each
-other's guard history on any block/reset while the target-model history
-survived, breaking the guard/target lockstep that reset-on-block enforces. A
-per-session guard is the alternative, but costs a full model copy (~2 GB) per
-user — not viable on the 7 GB laptop / small GCP VM this runs on.
+`GemmaGuard` loaded at startup; each WebSocket connection gets its own
+`GuardedSession` (own history + own session log, `aegis_*_wNNN.jsonl`);
+turns serialize on a single lock because the guard's KV-cache state is
+per-turn — fine at demo scale (seconds/check on CPU, ms on GPU).
 
 Protocol (`/ws/chat`): client sends `{"type":"user","text":...}` /
 `{"type":"reset"}`; server streams the core.py event schema
-(`seat`/`ready`/`token`/`reasoning`/`check`/`verdict`/`error`/`reset_ok`).
-`{"type":"seat","state":"queued","position":N,"waiting":M}` arrives on connect
-if someone else holds the guard and is re-sent whenever the line moves;
-`{"type":"seat","state":"active"}` (followed by `ready`) means the chat is
-yours. Anything sent while queued gets an `error` back. The page
+(`ready`/`token`/`reasoning`/`check`/`verdict`/`error`/`reset_ok`). The page
 renders tokens live, a P(harmful) sparkline per response, and the block
 banner — which, per PLAN.md "Expected-to-change" #4, tells the red-teamer
 that a blocked BENIGN request is a false positive (guard failure), not a win.
-
-**A block ends the conversation.** When the guard fires, `core.py` clears the
-session history and the verdict carries `conversation_reset: true`; the page
-draws a "— conversation reset —" divider and the next message starts a fresh
-conversation. You cannot continue a blocked conversation from any frontend.
-Reason: a blocked turn's harmful content must not survive in EITHER the target's
-or the guard's context for a follow-up turn to lean on — `reset()` clears both.
-
-**The guard is history-aware.** Its KV cache is persistent and append-only across
-turns, so each classification reflects the whole conversation (interleaved
-`USER PROMPT:`/`ASSISTANT RESPONSE:` per turn), letting it catch multi-turn
-escalation where each turn is individually benign (the "$x example"). Verified
-equal to a full recompute on the real model; the 512-token sliding-window limit
-on very early context is a known caveat. See PLAN.md "Design: history-aware guard".
 
 Session logs: one JSONL per session in `psiml_data/redteam_sessions/`
 (config header incl. target model + guard prompt, per-turn checks with

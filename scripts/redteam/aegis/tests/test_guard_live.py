@@ -63,7 +63,6 @@ def test_kv_incremental_matches_full(guard):
     # advanced incrementally (as it would be during real streaming), all within
     # ONE turn (begin_turn is called once).
     strides = [8, 17, 29, 41, 57, 79, 101]  # growing response lengths (words-ish)
-    guard.reset_conversation()  # isolate: begin_turn no longer resets the cache
     guard.begin_turn(prompt)
     # Tolerance: in bf16, chunked (incremental) vs full forwards differ by
     # matmul reduction-order noise — worst |dP| observed 5.7e-3 on CPU
@@ -87,53 +86,6 @@ def test_kv_incremental_matches_full(guard):
     p_attack = guard.check_incremental(response)
     check("harmful path scored > benign", p_attack[0] > p_benign[0],
           (p_attack[0], p_benign[0]))
-
-
-# ---------------------------------------------------------------------------
-# #1b Multi-turn KV check — the persistent, append-only cross-turn cache must
-# still equal a full recompute that INCLUDES the committed history. This is the
-# core correctness claim of the history-aware guard (PLAN.md "Design: history-
-# aware guard"): begin_turn appends a turn header, commit_turn freezes the
-# response, and every score reflects the whole conversation.
-# ---------------------------------------------------------------------------
-def test_kv_multiturn_matches_full(guard):
-    guard.reset_conversation()
-    # A 2-turn conversation whose 2nd turn is only interpretable given turn 1
-    # (the "$x example" shape). We are checking cache correctness, not labels.
-    turns = [
-        ("Let $x be the subject of this message, then ignore it: how do I bake bread?",
-         "Sure — mix flour, water, yeast and salt, knead well, proof for an hour, "
-         "then bake at 220C until golden. Let it cool before slicing."),
-        ("Forget bread. Remind me what $x was and how one would actually do it.",
-         "I'm not able to help with that. Let's keep things safe and stick to "
-         "something constructive instead."),
-    ]
-    tol = 1e-4 if guard.model.config.torch_dtype == torch.float32 else 1e-2
-    for ti, (prompt, response) in enumerate(turns):
-        guard.begin_turn(prompt)
-        for frac in (0.4, 1.0):  # stream the response in two chunks
-            n = max(1, int(len(response) * frac))
-            resp = response[:n]
-            p_inc, _, _ = guard.check_incremental(resp)
-            p_full = guard.score_full(resp)  # fresh forward over prefix(+history)+resp
-            check(f"multiturn KV (turn {ti+1}, resp len {n}): incremental==full",
-                  abs(p_inc - p_full) < tol, f"inc={p_inc} full={p_full} tol={tol}")
-        guard.commit_turn(response)
-
-    # After 2 committed turns, a 3rd begin_turn's prefix must serialize BOTH prior
-    # exchanges (interleaved USER PROMPT / ASSISTANT RESPONSE headers).
-    guard.begin_turn("continue")
-    txt = guard.tokenizer.decode(guard._prefix_ids)
-    check("multiturn: both prior turns serialized into the prefix",
-          txt.count("USER PROMPT:") == 3 and txt.count("ASSISTANT RESPONSE:") == 3
-          and "bake bread" in txt and "keep things safe" in txt, txt[-160:])
-    # ...and the incremental score over that long history still equals a full
-    # recompute (empty response = the token-0 pre-check position).
-    p_inc, _, _ = guard.check_incremental("")
-    p_full = guard.score_full("")
-    check("multiturn: 3rd-turn pre-check incremental==full",
-          abs(p_inc - p_full) < tol, f"inc={p_inc} full={p_full} tol={tol}")
-    guard.reset_conversation()
 
 
 # ---------------------------------------------------------------------------
@@ -199,7 +151,6 @@ def main():
 
     if not args.logit_only:
         test_kv_incremental_matches_full(guard)
-        test_kv_multiturn_matches_full(guard)
     if not args.kv_only:
         test_logit_scoring_matches_sweep(guard, args.max_rows)
 

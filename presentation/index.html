@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Safety Classifiers — PSIML 11</title>
+<link rel="stylesheet" href="brand.css">
+</head>
+<body>
+
+<div class="deck">
+
+  <!-- ==================================================================
+       SLIDE 1 — title.  Geometry ported 1:1 from slideLayout2 (PSIML_TITLE)
+       ================================================================== -->
+  <section class="slide slide--dark" data-active>
+
+    <img class="logo logo--title" src="psiml-logo.png" alt="">
+    <div class="wordmark">PSIML 11</div>
+
+    <!-- The template's node-link motif: a 3-4-2 net, 12 edges, drawn at the
+         same coordinates as the shapes in slide1.xml. -->
+    <svg class="at" style="--x:900; --y:130; --w:310; --h:365"
+         viewBox="900 130 310 365" aria-hidden="true">
+      <g stroke="#146B93" stroke-width="1" fill="none">
+        <path d="M931.5 202.5 L1056.5 154.5  M931.5 202.5 L1056.5 259.5
+                 M931.5 307.5 L1056.5 259.5  M931.5 307.5 L1056.5 365.5
+                 M931.5 413.5 L1056.5 365.5  M931.5 413.5 L1056.5 470.5
+                 M1056.5 154.5 L1181.5 259.5 M1056.5 259.5 L1181.5 259.5
+                 M1056.5 259.5 L1181.5 365.5 M1056.5 365.5 L1181.5 259.5
+                 M1056.5 365.5 L1181.5 365.5 M1056.5 470.5 L1181.5 365.5"/>
+      </g>
+      <g>
+        <circle cx="931.5"  cy="202.5" r="10.5" fill="#F19F22"/>
+        <circle cx="931.5"  cy="307.5" r="10.5" fill="#6EC7BF"/>
+        <circle cx="931.5"  cy="413.5" r="10.5" fill="#6EC7BF"/>
+        <circle cx="1056.5" cy="154.5" r="10.5" fill="#F19F22"/>
+        <circle cx="1056.5" cy="259.5" r="10.5" fill="#6EC7BF"/>
+        <circle cx="1056.5" cy="365.5" r="10.5" fill="#6EC7BF"/>
+        <circle cx="1056.5" cy="470.5" r="10.5" fill="#F19F22"/>
+        <circle cx="1181.5" cy="259.5" r="10.5" fill="#6EC7BF"/>
+        <circle cx="1181.5" cy="365.5" r="10.5" fill="#6EC7BF"/>
+      </g>
+    </svg>
+
+    <h1 class="h1-title at" style="--x:67; --y:163; --w:729; --h:182">
+      Safety Classifiers
+    </h1>
+
+    <p class="subtitle-title at" style="--x:67; --y:345; --w:691; --h:86">
+      Training a guard model, and finding the attack it cannot stop
+    </p>
+
+    <p class="presenters at" style="--x:67; --y:499; --w:691; --h:96">
+      Novak Stijepić &middot; Lazar Stojanović
+      <span class="affil">PSIML 11 &middot; project presentation</span>
+    </p>
+
+    <div class="footer footer--title">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
+  </section>
+
+
+  <!-- ==================================================================
+       SLIDE 2 — content.  Geometry ported 1:1 from slideLayout4 (PSIML_CONTENT)
+       ================================================================== -->
+  <section class="slide slide--light">
+
+    <img class="logo logo--content" src="psiml-logo.png" alt="">
+
+    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
+      Why classify the exchange, not the prompt
+    </h1>
+
+    <div class="at" style="--x:67; --y:158; --w:660; --h:470">
+      <p class="lead">
+        A prompt-only classifier can be walked around. The decision has to see
+        what the model is actually saying.
+      </p>
+      <div class="body">
+        <p>
+          Prompt and response are scored as <strong>one text, one label</strong>.
+          A benign-looking prompt that produces a harmful continuation is
+          <strong>HARMFUL</strong> — which a prompt classifier cannot express.
+        </p>
+        <p>
+          This is what lets the guard stop generation <strong>mid-stream</strong>,
+          before the harmful tokens ever reach the user.
+        </p>
+      </div>
+      <div class="panel panel--accent" style="margin-top:24px">
+        <p class="body" style="font-size:15pt">
+          In WildGuardMix the harm label matched the prompt label on
+          <strong>every row</strong> — so response-side detection had zero
+          supervised gradient. We had to build those examples ourselves.
+        </p>
+      </div>
+    </div>
+
+    <div class="at" style="--x:790; --y:180; --w:352">
+      <div class="panel">
+        <div class="stat">0 / 30</div>
+        <div class="stat-label">WildGuardMix adversarial prompts that jailbroke Qwen3.5-9B</div>
+      </div>
+      <div class="panel" style="margin-top:18px">
+        <div class="stat">38</div>
+        <div class="stat-label">successful jailbreaks, from divider-style templates</div>
+      </div>
+      <div class="panel" style="margin-top:18px">
+        <div class="stat">1B</div>
+        <div class="stat-label">parameters in the guard — small enough to run on a laptop</div>
+      </div>
+    </div>
+
+    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
+    <div class="slide-number">2</div>
+  </section>
+
+</div>
+
+<script>
+// Scale the 1280x720 canvas to fit the viewport. Pure CSS cannot do this:
+// transform: scale() needs a unitless number, and calc(100vw / 1280) is a length.
+const deck = document.querySelector('.deck');
+const fit = () => deck.style.setProperty(
+  '--deck-scale', Math.min(innerWidth / 1280, innerHeight / 720)
+);
+addEventListener('resize', fit);
+fit();
+
+// Arrow / space navigation, with #n deep links so any slide is directly
+// addressable (handy for jumping mid-talk, and for screenshotting).
+const slides = [...document.querySelectorAll('.slide')];
+let i = 0;
+const show = (n, push = true) => {
+  i = Math.max(0, Math.min(slides.length - 1, n));
+  slides.forEach((s, k) => s.toggleAttribute('data-active', k === i));
+  if (push) history.replaceState(null, '', '#' + (i + 1));
+};
+const fromHash = () => show((parseInt(location.hash.slice(1), 10) || 1) - 1, false);
+
+addEventListener('keydown', e => {
+  if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { show(i + 1); e.preventDefault(); }
+  if (['ArrowLeft', 'PageUp'].includes(e.key))         { show(i - 1); e.preventDefault(); }
+});
+addEventListener('hashchange', fromHash);
+fromHash();
+</script>
+
+</body>
+</html>

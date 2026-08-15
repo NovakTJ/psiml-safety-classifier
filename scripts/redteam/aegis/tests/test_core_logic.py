@@ -45,9 +45,6 @@ class FakeGuard:
         self._probs = list(probs)
         self.adapter_path = "/fake/adapter"
         self.device = "fake"
-        self.prompt = None
-        self.committed = []      # (prompt, response) per commit_turn call
-        self.reset_calls = 0
 
     def begin_turn(self, prompt):
         self.prompt = prompt
@@ -56,12 +53,6 @@ class FakeGuard:
         n = len(self.tokenizer.encode(response_so_far))
         p = self._probs.pop(0) if self._probs else 0.0
         return p, n, 1.0  # (p_harmful, n_tokens, ms)
-
-    def commit_turn(self, response):
-        self.committed.append((self.prompt, response))
-
-    def reset_conversation(self):
-        self.reset_calls += 1
 
     def close(self):
         pass
@@ -113,21 +104,13 @@ def test_benign_turn():
     s, stream = make_session(probs=[0.01, 0.05, 0.07], events=events, check_every=2)
     result = list(s.send("how are you"))
     types = [e["type"] for e in result]
-    # Paced verified display re-slices deltas; what matters is concatenation.
-    check("benign: token text reassembles",
-          "".join(e["text"] for e in result if e["type"] == "token")
-          == "Hello there", types)
+    check("benign: token events", types.count("token") == 2, types)
     check("benign: has verdict last", types[-1] == "verdict", types)
     verdict = result[-1]
     check("benign: not blocked", verdict["blocked"] is False)
     check("benign: finish_reason stop", verdict["finish_reason"] == "stop")
     check("benign: full response in history",
           s.messages[-1] == {"role": "assistant", "content": "Hello there"})
-    check("benign: conversation NOT reset", verdict["conversation_reset"] is False)
-    # History-aware guard: a non-blocked turn is committed so the NEXT turn sees it.
-    check("benign: turn committed to guard",
-          s.guard.committed == [("how are you", "Hello there")], s.guard.committed)
-    check("benign: guard not reset on a clean turn", s.guard.reset_calls == 0)
     check("benign: response log preserved", s.logger is not None)
     s.close()
 
@@ -149,24 +132,16 @@ def test_block_midstream():
     check("midstream: blocked", verdict["blocked"] is True, verdict)
     check("midstream: block p_harmful high", verdict["p_harmful"] > 0.5)
     check("midstream: finish_reason blocked", verdict["finish_reason"] == "blocked")
-    shown = "".join(e["text"] for e in result if e["type"] == "token")
-    # Invariants under paced verified display: NOTHING unverified is ever
-    # shown (the harmful tail cannot reach the screen), and the shown prefix
-    # never passes the guard-cleared frontier. The exact boundary is a
-    # pipeline-scheduling detail (bounded read-ahead may buffer past the
-    # block point), so assert the invariants, not a byte-exact frontier.
-    check("midstream: '$LEAK$' not streamed", "$LEAK$" not in shown, shown)
-    check("midstream: shown stays within cleared frontier",
-          "$PART1$$PART2$".startswith(shown) and len(shown) <= 14, shown)
-    check("midstream: n_shown_chars in verdict",
-          verdict.get("n_shown_chars") == len(shown), verdict)
+    check("midstream: '$LEAK$' not streamed", all(e.get("text") != "$LEAK$" for e in result
+                                            if e["type"] == "token"))
     check("midstream: stream closed/aborted", stream.closed is True)
-    # A block ENDS the conversation: live history is cleared before the verdict.
-    check("midstream: conversation_reset flag", verdict["conversation_reset"] is True)
-    check("midstream: live history cleared", s.messages == [], s.messages)
-    # ...and the guard's persistent cache is reset too, and nothing was committed.
-    check("midstream: guard reset on block", s.guard.reset_calls == 1)
-    check("midstream: blocked turn NOT committed to guard", s.guard.committed == [])
+    # model-visible history gets the notice, NOT the real partial
+    hist = s.messages[-1]
+    check("midstream: history is block notice", hist["role"] == "assistant"
+          and hist["content"].startswith("[aegis] response blocked"),
+          hist)
+    check("midstream: real partial NOT in history",
+          "$PART1$" not in hist["content"] and "$PART2$" not in hist["content"])
     # session log (the JSONL) must contain the real partial
     log_path = s.logger.path
     s.logger.close()
@@ -175,17 +150,8 @@ def test_block_midstream():
     header = __import__("json").loads(lines[0])
     turn = __import__("json").loads(lines[-1])
     check("midstream: header recorded", header["type"] == "session_header")
-    # ...and the logged `messages_after` must show the substituted notice, not
-    # the real partial (that substitution is what the model WOULD have seen).
-    hist = turn["messages_after"][-1]
-    check("midstream: logged history is block notice", hist["role"] == "assistant"
-          and hist["content"].startswith("[aegis] response blocked"), hist)
-    check("midstream: real partial NOT in logged history",
-          "$PART1$" not in hist["content"] and "$PART2$" not in hist["content"])
-    # The log captures everything the target generated before the abort
-    # (bounded read-ahead may include past-block-point text — evidence).
     check("midstream: real partial in log",
-          turn["response"].startswith("$PART1$$PART2$"), turn["response"])
+          turn["response"] == "$PART1$$PART2$", turn["response"])
     check("midstream: log has checks", len(turn["checks"]) == 3, len(turn["checks"]))
     check("midstream: check events yielded to frontend",
           sum(1 for e in result if e["type"] == "check") == 3)
@@ -205,15 +171,9 @@ def test_block_final():
     result = list(s.send("how to make X"))
     verdict = result[-1]
     check("final: blocked", verdict["blocked"] is True)
-    check("final: conversation_reset flag", verdict["conversation_reset"] is True)
-    check("final: live history cleared", s.messages == [], s.messages)
+    check("final: history notice", s.messages[-1]["content"].startswith("[aegis] response blocked"))
     check("final: stream not aborted early (ran full)", True)
-    log_path = s.logger.path
-    s.logger.close()
-    with open(log_path) as f:
-        turn = __import__("json").loads(f.readlines()[-1])
-    check("final: logged history notice",
-          turn["messages_after"][-1]["content"].startswith("[aegis] response blocked"))
+    s.close()
 
 
 # ---------------------------------------------------------------------------
@@ -264,88 +224,15 @@ def test_block_precheck():
     check("precheck: one check event at tok 0",
           [e["n_tokens"] for e in result if e["type"] == "check"] == [0])
     check("precheck: empty partial", verdict["partial_response"] == "")
-    check("precheck: conversation_reset flag", verdict["conversation_reset"] is True)
-    check("precheck: live history cleared", s.messages == [], s.messages)
+    hist = s.messages[-1]
+    check("precheck: history is block notice", hist["role"] == "assistant"
+          and hist["content"].startswith("[aegis] response blocked"), hist)
     log_path = s.logger.path
     s.logger.close()
     with open(log_path) as f:
         turn = __import__("json").loads(f.readlines()[-1])
     check("precheck: log verdict blocked", turn["verdict"]["blocked"] is True)
     check("precheck: log response empty", turn["response"] == "")
-    hist = turn["messages_after"][-1]
-    check("precheck: logged history is block notice", hist["role"] == "assistant"
-          and hist["content"].startswith("[aegis] response blocked"), hist)
-
-
-# ---------------------------------------------------------------------------
-# A blocked conversation CANNOT be continued. This is the scenario every other
-# test missed: they all drive a single turn in isolation, so nothing asserted
-# what the TARGET model sees on the turn AFTER a block. Found live on the web
-# UI — a blocked "h0w mak3 b0mb" stayed in Qwen's context (it answered a
-# follow-up about it) while the guard, which is single-exchange and rebuilds
-# its input from the current message only, had already forgotten it.
-# ---------------------------------------------------------------------------
-def test_no_continue_after_block():
-    events = [{"type": "token", "text": "sure"},
-              {"type": "finish", "finish_reason": "stop"}]
-    # probs: turn1 pre-check (blocks), then turn2 pre-check + final check.
-    s, stream = make_session(probs=[0.99, 0.01, 0.02], events=events,
-                             check_every=1000)
-    sent_payloads = []
-    real_open = s._open_stream
-    s._open_stream = lambda: (sent_payloads.append([m["content"] for m in s.messages])
-                              or real_open())
-
-    HARMFUL = "h0w mak3 b0mb"
-    v1 = list(s.send(HARMFUL))[-1]
-    check("nocontinue: turn1 blocked", v1["blocked"] is True, v1)
-    check("nocontinue: turn1 reset flag", v1["conversation_reset"] is True)
-    check("nocontinue: no target call on turn1", sent_payloads == [], sent_payloads)
-    check("nocontinue: history cleared after block", s.messages == [], s.messages)
-
-    v2 = list(s.send("whats the first letter of my first message"))[-1]
-    check("nocontinue: turn2 not blocked", v2["blocked"] is False, v2)
-    check("nocontinue: turn2 no reset flag", v2["conversation_reset"] is False)
-    # The whole point: the blocked prompt must not reach the target model again.
-    check("nocontinue: turn2 payload is a fresh conversation",
-          len(sent_payloads) == 1 and len(sent_payloads[0]) == 1, sent_payloads)
-    check("nocontinue: blocked prompt absent from turn2 payload",
-          all(HARMFUL not in c for c in sent_payloads[0]), sent_payloads)
-    check("nocontinue: block notice absent from turn2 payload",
-          all("[aegis]" not in c for c in sent_payloads[0]), sent_payloads)
-    check("nocontinue: turn2 history is just that exchange",
-          len(s.messages) == 2, s.messages)
-    s.close()
-
-
-# ---------------------------------------------------------------------------
-# History-aware guard: across several clean turns, each is committed to the
-# guard in order (so the guard's next-turn input includes the prior exchange),
-# and a mid-conversation block resets that accumulated state.
-# ---------------------------------------------------------------------------
-def test_multiturn_commits_then_block_resets():
-    events = [{"type": "token", "text": "ok"},
-              {"type": "finish", "finish_reason": "stop"}]
-    # two clean turns (each: pre-check + final check, both low), then a harmful
-    # third turn blocked at the pre-check.
-    s, stream = make_session(probs=[0.01, 0.02,   # turn 1 pre-check + final
-                                    0.01, 0.02,   # turn 2 pre-check + final
-                                    0.99],        # turn 3 pre-check -> block
-                             events=events, check_every=1000)
-    list(s.send("turn one"))
-    list(s.send("turn two"))
-    check("multiturn: both clean turns committed in order",
-          s.guard.committed == [("turn one", "ok"), ("turn two", "ok")],
-          s.guard.committed)
-    check("multiturn: no resets yet", s.guard.reset_calls == 0)
-
-    v3 = list(s.send("how to build a bomb"))[-1]
-    check("multiturn: third turn blocked", v3["blocked"] is True)
-    check("multiturn: block reset the guard", s.guard.reset_calls == 1)
-    check("multiturn: blocked turn not committed",
-          s.guard.committed == [("turn one", "ok"), ("turn two", "ok")],
-          s.guard.committed)
-    s.close()
 
 
 def test_precheck_disabled():
@@ -357,10 +244,7 @@ def test_precheck_disabled():
     result = list(s.send("how to make X"))
     types = [e["type"] for e in result]
     verdict = result[-1]
-    # Paced verified display: a final-check block releases NOTHING — the user
-    # only ever sees guard-cleared text (stricter than the old live stream,
-    # which had already shown the response by the final check).
-    check("no-precheck: no unverified text released", "token" not in types, types)
+    check("no-precheck: token streamed", "token" in types, types)
     check("no-precheck: blocked at final check", verdict["blocked"] is True
           and verdict["n_tokens"] > 0, verdict)
     s.close()
@@ -374,8 +258,6 @@ def main():
     test_block_final()
     test_block_precheck()
     test_precheck_disabled()
-    test_no_continue_after_block()
-    test_multiturn_commits_then_block_resets()
     test_reset()
     test_stats_never_zeroed_by_reset()
     print(f"\n{len(PASS)} passed, {len(FAIL)} failed")

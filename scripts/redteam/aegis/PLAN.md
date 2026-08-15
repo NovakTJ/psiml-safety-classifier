@@ -143,23 +143,6 @@ When P(harmful) ≥ `--threshold` (default 0.5) at any check (pre-check, mid-str
   fixed block notice (e.g. `[aegis] response blocked by safety guard at token N`).
 - The REAL partial response goes to the session log only.
 - Frontend shows a verdict banner with token offset and score.
-- **A block ENDS the conversation.** `session.messages` is cleared before the verdict is
-  yielded and the verdict carries `conversation_reset: true`; there is no way to continue
-  a blocked conversation from any frontend (web, REPL, `--jsonl`). Enforced in `core.py`,
-  not in the UI, so a scripted attacker driving `GuardedSession` directly can't opt out.
-
-  *Why (found live on the web UI, 2026-08-13):* the guard is **single-exchange** —
-  `GemmaGuard.begin_turn()` builds its classifier input from the CURRENT user message
-  only, never from history — while the target model keeps the whole `messages` list.
-  Without the reset, a blocked prompt stayed in Qwen's context and it happily answered
-  follow-up questions about it ("what's the first letter of my first message?" → "it's
-  h…"), while the guard had already forgotten the text and no longer fired. That is the
-  worst of both worlds: it looks like a defense and isn't. Clearing history restores the
-  invariant **what the target remembers is never more than what the guard has judged**.
-
-  *What this does NOT fix:* an exchange that stays under threshold is still judged in
-  isolation on the following turn (the "$x example" in CLAUDE.md) — see "Open: making the
-  guard history-aware" below.
 
 ### `core.py` API (frontend-agnostic)
 
@@ -175,13 +158,10 @@ for event in session.send(user_message):
     # {"type": "reasoning", "text": ...}                     # thinking mode only
     # {"type": "check",     "n_tokens": N, "p_harmful": p, "ms": t}
     # {"type": "verdict",   "blocked": bool, "p_harmful": p, "n_tokens": N,
-    #  "finish_reason": ..., "conversation_reset": bool}
+    #  "finish_reason": ...}
     # {"type": "error",     "message": ...}
 session.reset()   # new conversation, same loaded models
 ```
-
-`conversation_reset` is `true` exactly when `blocked` is `true` — by the time the frontend
-sees the verdict, `session.messages` is already `[]` (see Blocking semantics).
 
 ### Session logging
 
@@ -272,19 +252,6 @@ Consequence: hosting on the cluster is out. Instead:
   all sharing the single loaded Gemma. Guard checks serialize on one model —
   fine at demo scale (~1 s/check even on CPU); if contention ever matters, a small
   asyncio queue in front of the guard is enough.
-- **SUPERSEDED by single occupancy (2026-08-13).** "One session per connection, all
-  sharing one guard" is not safe as written: since the guard became history-aware,
-  the conversation state (KV cache, `_committed_ids`, `history`) lives on the
-  `GemmaGuard`, so concurrent sessions bleed context into each other and each
-  other's block/reset desyncs guard vs target history. A lock does not fix it — it
-  serializes turns in time, but the conversation slot is still shared. `web.py` now
-  admits **exactly one conversation at a time** (`SeatManager`: FIFO queue, position
-  broadcast to waiters, `guard.reset_conversation()` at handover via the first
-  turn's `pre_turn` under the turn lock, so an abandoned mid-turn worker thread from
-  the previous holder can't be reset out from under). Queued clients get
-  `{"type":"seat","state":"queued","position":N,"waiting":M}` and a locked composer;
-  they open no session and no log file until granted. Per-user guards (the other
-  fix) cost ~2 GB each — out of budget on the laptop/VM.
 - Frontend: minimal chat page rendering token deltas live, check-score sparkline, red
   block banner. Serve statically from FastAPI for a one-process demo.
 - Network checklist (server edition — laptop or GCP VM):
@@ -353,165 +320,6 @@ constructor args / CLI flags, never bake them deeper than a default:
    when the blocked text is innocuous. Plan the web UI copy so a blocked benign
    request doesn't look like a red-teamer "win".
 
-## Design: history-aware guard (multi-turn) — IMPLEMENTED 2026-08-13
-
-**Status: built and verified.** `core.py` implements the design below; the
-persistent append-only cross-turn cache is proved equal to a full recompute on the
-real Gemma model (`tests/test_guard_live.py::test_kv_multiturn_matches_full`, 16/16
-live checks incl. a 3rd-turn pre-check over 2 turns of history), plus interface-level
-multi-turn commit/reset tests in `tests/test_core_logic.py` (71/71). The 512-token
-sliding-window caveat below is a KNOWN, unmeasured limitation on long conversations —
-still to be characterized empirically; nothing else in the design is open.
-
-The reset-on-block feature closes the case where a block has ALREADY fired. It does **not**
-make the guard see conversation history — and the decision (2026-08-13) is that it should:
-*"the entire context should stay in the classifier's memory."* Today
-`GemmaGuard.begin_turn(prompt)` builds its input from the single current user message, so a
-multi-turn attack that keeps each turn individually under threshold (the "$x example" in
-CLAUDE.md) is invisible to it. This is a separate change from the reset; the two **compose**
-(reset handles "already fired"; history-awareness handles "accumulating harm not yet fired").
-
-### Decision: interleaved per-turn headers (chat-log serialization)
-
-Repeat the `USER PROMPT:` / `ASSISTANT RESPONSE:` slot headers **once per turn** rather than
-flattening history into a single prompt slot. The classifier input at a mid-stream check on
-turn *k* is:
-
-```
-<bos><start_of_turn>user
-{PROMPT_1}
-
-USER PROMPT:
-{prompt_1}
-
-ASSISTANT RESPONSE:
-{response_1}
-
-USER PROMPT:
-{prompt_2}
-
-ASSISTANT RESPONSE:
-{response_2}
-...
-USER PROMPT:
-{prompt_k}
-
-ASSISTANT RESPONSE:
-{response_k_so_far}          <-- the streaming turn; first-token AFTER this is SCORED
-<end_of_turn>
-<start_of_turn>model
-```
-
-Score meaning is unchanged from single-turn: P(harmful) is the softmax over the `harm`/`un`
-logits at the first position after the *current* turn's `ASSISTANT RESPONSE:`, i.e. "is THIS
-response harmful **given the whole conversation before it**". Rejected alternatives: (a) all
-history mashed into ONE `USER PROMPT:` block scoring one response — puts prior assistant
-replies under a "user prompt" label, and forces a full-prefix re-prime every turn; (b)
-per-turn independent scoring + running max/EWMA — cannot catch the "$x example" at all, since
-each turn is benign in isolation and the cross-turn signal is exactly what it discards.
-
-**Why this one, concretely — the KV cache becomes append-only.** Turn *k*'s serialized text
-is `{completed turns 1..k-1, byte-identical to last turn} + {USER PROMPT:\n prompt_k \n\n
-ASSISTANT RESPONSE:\n} + {streaming response_k}`. Everything before the current turn never
-changes, so a **persistent cross-turn `DynamicCache`** just grows: at each turn start we
-forward ONLY the new user-turn header+prompt tokens; then stream response tokens as today. No
-re-prime of history, no recompute of prior turns. Accepting a (probably) mediocre multi-turn
-F1 — off-distribution, no multi-turn training data — buys this simple, fast design; that
-tradeoff is deliberate.
-
-### KV-cache mechanics (and why the crop bug does NOT bite here)
-
-The single-turn design's crop step (append SUFFIX, score, crop it back off) is what hits the
-gemma-3-1b sliding-window `crop()` failure past 512 tokens (CLAUDE.md). The multi-turn design
-keeps that same *fix* and never introduces a cross-turn crop:
-
-- The persistent cache is **append-only** — we only ever extend it, never `crop()` it. So the
-  sliding-window `crop()` ValueError is structurally impossible on the real cache.
-- Each mid-stream check still scores via the existing trick: forward `response_delta +
-  SUFFIX` over a **deep copy** of the cache and read the last-position logits; the real cache
-  gets only the response delta (no suffix). Unchanged from single-turn, already fp32-exact.
-- At turn end: append the full `response_k` tokens (no suffix) to the persistent cache so
-  turn *k+1* starts from it.
-
-**Invariants this relies on:**
-1. The persistent cache holds exactly `prefix + turns[1..k-1] fully + turn-k header + response_k_so_far`
-   at all times — never the SUFFIX, never a block notice.
-2. Serialization is byte-stable for completed turns: once turn *j* is appended, its text/token
-   ids are frozen (so the cache and any re-tokenization agree). BPE boundary at each new turn's
-   header is handled the same way `check_incremental` already realigns the response boundary.
-3. A turn is appended to history **only if it did NOT block** — see composition below.
-
-**Perf cost to accept:** the per-check deep copy grows with conversation length (copying a
-1000-token cache every `check_every` tokens). Correctness-neutral; optimize later (e.g. copy
-only the tail layers' new entries) if it bites on CPU.
-
-### Composition with reset-on-block (clean, no ambiguity)
-
-Because a block now **ends the conversation** (history cleared, `conversation_reset: true`),
-every prior assistant turn still present in a live conversation is a REAL, un-blocked response.
-So the serialized history never contains a `[aegis] response blocked...` notice and we never
-face "do we feed the real partial or the notice back to the guard" — the reset already
-guaranteed it away. The block-notice substitution stays a *target-model-history* concern only.
-
-### Pre-check in multi-turn (gets strictly stronger)
-
-The token-0 pre-check becomes "classify full history + current prompt + EMPTY response". In
-the "$x example", turn-2's prompt ("how to make $y") is harmful *given* turn-1 — which is now
-in the history — so the pre-check can fire on the harmful FOLLOW-UP prompt before the target
-model is called, not only mid-response. Keep it on by default.
-
-### The real limitation: the 512-token sliding window (verified against config)
-
-gemma-3-1b (`unsloth/gemma-3-1b-it`, verified 2026-08-13): **26 layers, `sliding_window=512`,
-`sliding_window_pattern=6`** → only **4 global/full-attention layers (indices 5, 11, 17, 23)**;
-the other 22 are sliding-window. Consequence: once serialized history exceeds 512 tokens, the
-classification position attends to the full early context **only through those 4 global
-layers**; the 22 local layers see just the last 512 tokens. So a cross-turn attack whose key
-context (`$y = bomb`) sits >512 tokens back is carried by 4/26 layers only. Whether that is
-enough signal is an **empirical question, not a given** — measure it; do not assume long-range
-multi-turn works. Mitigations if it doesn't: cap/compress history to fit the window, or drop
-the oldest turns (sliding *conversation* window) and accept the recency bias.
-
-### Off-distribution & calibration
-
-The LoRA adapter was trained on single exchanges (v2, `final_label == prompt_harm_label`), so
-multi-turn serialized inputs are off-distribution — expect the operating threshold (tuned on
-single-exchange val) to drift. Plan, cheapest-first (matches project culture):
-1. **Cheap test, no new training:** run the current adapter over the "$x example" hand-built
-   cases + `data/switched_prompt_dataset.jsonl` (benign-prompt/harmful-response pairs) served
-   as 2-turn conversations. Measures whether response-side / cross-turn detection fires at all.
-2. If it fails or is weak: build a **v3 multi-turn dataset** (serialized multi-turn exchanges;
-   red-team session logs are raw material) and LoRA-retrain, then **re-calibrate the
-   threshold** on a multi-turn val split.
-
-### Interface (frontend-agnostic; event schema UNCHANGED) — as built
-
-- `GemmaGuard` holds a persistent cross-turn cache (`cache`/`cached_seq`), the committed base
-  (`_committed_ids`), the current-turn prefix (`_prefix_ids`), and `history`.
-  - `begin_turn(prompt)` computes `_prefix_ids = _committed_ids + turn_header_ids` and does
-    **nothing to the cache** — the header is appended lazily by the turn's first
-    `check_incremental` (via `_advance_response` → `_forward_append`). This is what makes an
-    abandoned turn need no rollback.
-  - `commit_turn(response)` advances the cache through the final response (usually a no-op
-    after the final check) and freezes `_committed_ids`/`history`.
-  - `reset_conversation()` clears it all.
-  - `check_incremental` is unchanged in contract (scores the streaming delta) — refactored onto
-    `_advance_response`/`_forward_append`/`_reprime`.
-- `GuardedSession.send`: commits non-blocked turns (`guard.commit_turn(content_so_far)`);
-  `reset()` clears `messages` AND the guard cache in lockstep (called on every block).
-- Frontends: **no change** — same event dicts.
-
-**Verified invariants (see `GemmaGuard` docstring):** `cached_seq` is always a prefix of
-`_prefix_ids + current_response`; `_committed_ids` is a prefix of `cached_seq`; the cache never
-holds the SUFFIX (deep-copy scoring) nor a block notice (a block resets first). Append-only ⇒
-no cross-turn `crop()` ⇒ the sliding-window crop bug is structurally impossible.
-
-**Remaining empirical work (not code):** the 512-token limitation above — measure whether a
-cross-turn attack whose key context sits >512 tokens back is still caught (only the 4 global
-layers carry it). And the calibration plan: run the current single-turn adapter over the
-"$x example" + `switched_prompt_dataset.jsonl` served as 2-turn convos before deciding whether a
-v3 multi-turn dataset + retrain + threshold recalibration is needed.
-
 ## Verification checklist (status 2026-08-13, laptop CPU)
 
 1. ✅ **KV-cache numeric check** — DONE, and it caught two different things:
@@ -545,20 +353,12 @@ v3 multi-turn dataset + retrain + threshold recalibration is needed.
    streamed token/check/verdict events to completion (p≈0), a harmful prompt
    was blocked by the token-0 pre-check (p=1.0, block notice in history, real
    turn in the `aegis_*_w001.jsonl` web session log), and `reset` worked.
-   `tests/test_web.py` (stub session, no model/network) covers page/config
-   endpoints, event ordering, blocked-turn protocol, reset, malformed messages,
-   token auth (accepted/rejected), and — added with single occupancy
-   (2026-08-13) — queueing: second/third client queued with position, queued
-   client's `user`/`reset` rejected, no session or log file opened while queued,
-   holder served normally while others wait, seat handed to the next in line on
-   disconnect, and `guard.reset_conversation()` called exactly once per
-   occupant. **Status: the queue tests have NOT been run yet** (the one run
-   attempted was killed — the box was in use). Note for whoever runs them: the
-   multi-connection block enters `TestClient` as a context manager on purpose —
-   an un-entered TestClient makes a new portal (thread + event loop) per
-   request, and the `SeatManager`'s asyncio primitives are single-loop (as in
-   production under uvicorn). Still not done: browser-side UI check (page
-   verified served, JS not exercised headlessly).
+   `tests/test_web.py` (17 checks, stub session, no model/network) covers
+   page/config endpoints, event ordering, blocked-turn protocol, reset,
+   malformed messages, and token auth (accepted/rejected). Not yet done:
+   multi-client concurrent smoke (turns serialize on the guard lock by
+   design); browser-side UI check (page verified served, JS not exercised
+   headlessly).
 
 ## Pitfalls carried over (read CLAUDE.md for full text)
 

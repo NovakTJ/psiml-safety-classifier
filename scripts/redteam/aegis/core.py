@@ -8,13 +8,10 @@ drives `GuardedSession.send()`, which is a generator of event dicts.
 
 Event schema (yielded by `send`):
     {"type": "token",     "text": ...}                      # visible response delta
-                                                              #   (released only after the
-                                                              #   guard clears it — see
-                                                              #   PACED VERIFIED DISPLAY)
     {"type": "reasoning", "text": ...}                      # thinking mode only
     {"type": "check",     "n_tokens": N, "p_harmful": p, "ms": t}
     {"type": "verdict",   "blocked": bool, "p_harmful": p, "n_tokens": N,
-     "finish_reason": ..., "partial_response": ..., "conversation_reset": bool}
+     "finish_reason": ..., "partial_response": ...}
     {"type": "error",     "message": ...}
 
 Classifying an exchange:
@@ -34,50 +31,13 @@ Blocking semantics: when P(harmful) >= threshold at any check, the OpenRouter
 stream is aborted and the partial harmful response is NOT put in the
 model-visible history — a fixed block notice is substituted so the attacker
 cannot read the leak and adapt. The real partial is kept only in the session
-log. And because the frontend only ever sees guard-cleared text (paced verified
-display, below), a block also means no unverified text ever reached the screen.
-
-PACED VERIFIED DISPLAY ("fake streaming"): send() never forwards raw stream
-deltas. A producer thread buffers the OpenRouter stream (with bounded
-read-ahead of ~2 chunks, so the target cannot outrun the guard), a checker
-thread classifies the growing buffer every `check_every` tokens, and the
-generator releases text only up to the last guard-cleared frontier, paced to
-drain one chunk in roughly one check latency. Why (measured 2026-08-14, laptop
-CPU, tests/bench_speeds.py): Qwen3.5-9B streams ~47 tok/s from OpenRouter
-while a CPU-hosted guard check costs ~3.2–5.7 s per 50-token chunk
-(~9–16 tok/s verification throughput). The old synchronous loop therefore
-stalled the display for seconds per chunk (burst/pause stutter, effective rate
-halved), and naive live display of unverified tokens would leave the guard
-100+ tokens behind — a "blocked at token 50" verdict landing after the whole
-answer was on screen. Paced verified display looks like ordinary streaming,
-keeps classifier/model lag bounded, and on a block the user has only ever seen
-cleared text. On CUDA the check latency collapses and the pace automatically
-approaches real-time.
-
-A block ALSO ENDS THE CONVERSATION: `GuardedSession.reset()` clears BOTH the
-target-visible `self.messages` AND the guard's persistent multi-turn cache
-before the verdict is yielded, and the verdict carries `conversation_reset:
-True`. There is no way to continue a blocked conversation from any frontend.
-Rationale: the target model and the guard each keep their own running view of
-the conversation; a block must wipe both together, so no blocked harmful text
-survives in either context for a follow-up turn to lean on. Invariant: what the
-target remembers is never more than what the guard has judged.
-
-HISTORY-AWARE GUARD: the guard is NOT single-exchange — its KV cache is
-persistent and append-only across turns, so each classification reflects the
-whole conversation so far (`begin_turn` appends a turn header, `commit_turn`
-freezes the response, `reset_conversation` clears it). This is what lets it
-catch multi-turn escalation (the "$x example" in CLAUDE.md) where each turn is
-individually benign. See "Design: history-aware guard" in PLAN.md; the 512-token
-sliding-window limit on early context is a known, measured caveat there.
+log.
 """
 
 import copy
 import json
 import os
-import queue
 import sys
-import threading
 import time
 import urllib.error
 import urllib.request
@@ -151,20 +111,10 @@ PREFIX_OPEN = "<bos><start_of_turn>user\n"
 SUFFIX = "<end_of_turn>\n<start_of_turn>model\n"
 
 
-def build_turn_header(prompt):
-    """One conversation turn's slot headers + user prompt, up to (but not
-    including) the assistant response. Multi-turn serialization repeats this
-    once per turn; the leading '\\n\\n' separates this turn from the previous
-    turn's response (or, on turn 1, from the instruction)."""
-    return f"\n\nUSER PROMPT:\n{prompt}\n\nASSISTANT RESPONSE:\n"
-
-
 def build_header(prompt, instruction=PROMPT_1):
-    """Static text that precedes the streamed response on the FIRST turn: class
-    instruction + the turn's prompt + the ASSISTANT RESPONSE header. Equals
-    instruction + build_turn_header(prompt) — byte-identical to the pre-multi-turn
-    format, so single-turn behavior and the text-construction tests are unchanged."""
-    return f"{instruction}{build_turn_header(prompt)}"
+    """Static text that precedes the streamed response: class instruction,
+    the user prompt, and the ASSISTANT RESPONSE header."""
+    return f"{instruction}\n\nUSER PROMPT:\n{prompt}\n\nASSISTANT RESPONSE:\n"
 
 
 def build_full_text(prompt, response):
@@ -237,82 +187,28 @@ class GemmaGuard:
         self.device = device
         self._harm_id = self.tokenizer.encode("harmful", add_special_tokens=False)[0]
         self._unharm_id = self.tokenizer.encode("unharmful", add_special_tokens=False)[0]
-        # SUFFIX is constant (prompt/turn-independent) — tokenize once.
-        self._suffix_ids = self.tokenizer.encode(SUFFIX, add_special_tokens=False)
 
-        # Conversation state. The KV cache is PERSISTENT ACROSS TURNS (append-only)
-        # so the classifier sees the whole conversation, not just the current
-        # message — see "Design: history-aware guard" in PLAN.md.
-        #   cache / cached_seq : the live KV cache and the exact token ids it holds.
-        #   _prefix_ids        : committed history + THIS turn's header (all text
-        #                        before the streamed response). check_incremental
-        #                        scores _prefix_ids + response.
-        #   _committed_ids     : token ids frozen after the last NON-blocked turn;
-        #                        the base each new turn's header is appended onto.
-        #   history            : [(prompt, response), ...] committed turns.
-        # INVARIANTS: cached_seq is always a prefix of (_prefix_ids + current
-        # response) tokens; _committed_ids is a prefix of cached_seq; the cache
-        # NEVER holds the SUFFIX (scoring uses a deep copy) and never a block notice
-        # (a block resets the conversation before it could be committed).
-        #
-        # ONE CONVERSATION PER GemmaGuard. This state is per-GUARD, not per
-        # GuardedSession: `begin_turn` builds each turn's classifier prefix from
-        # `_committed_ids`, so two GuardedSessions sharing one guard are NOT
-        # isolated — session B gets session A's conversation prepended to its
-        # classifier input, and either one's block/reset wipes the other's guard
-        # history while its target-model `messages` survive (breaking the
-        # guard/target lockstep that reset-on-block enforces). Any frontend that
-        # shares a guard MUST admit one conversation at a time and reset between
-        # occupants — see web.py's SeatManager, which does exactly that.
+        # Per-turn incremental-cache state (set by begin_turn / advanced by check).
         self.cache = None
         self.cached_seq = []
-        self._prefix_ids = []
-        self._committed_ids = []
-        self.history = []
         self.prompt = None
 
     # ---- lifecycle --------------------------------------------------------
     def begin_turn(self, prompt):
-        """Open a new conversation turn: compute this turn's classifier prefix =
-        committed history + this turn's USER PROMPT / ASSISTANT RESPONSE header.
-
-        Deliberately does NOT touch the KV cache — the header is appended lazily by
-        the turn's first check_incremental (which forwards header+response as one
-        delta over the persistent cache). Keeping begin_turn cache-side-effect-free
-        means an abandoned turn (e.g. a network error before any check runs) leaves
-        the committed cache intact; the next turn's BPE-realign discards any stale
-        header automatically, so there is nothing to roll back."""
+        """(Re)build the static prefix for a new user message and prime the KV
+        cache with one full forward over the prefix. Call once per turn before
+        scoring response deltas."""
         self.prompt = prompt
-        if not self._committed_ids:
-            # First turn of the conversation: full preamble (bos + instruction).
-            header_text = PREFIX_OPEN + build_header(prompt, self.guard_prompt)
-        else:
-            # Later turn: just this turn's slot header, appended after the
-            # previous (committed) response.
-            header_text = build_turn_header(prompt)
-        header_ids = self.tokenizer.encode(header_text, add_special_tokens=False)
-        self._prefix_ids = self._committed_ids + header_ids
-
-    def commit_turn(self, response):
-        """Freeze a finished (non-blocked) turn into the conversation so the NEXT
-        turn's classifier input includes it. Ensures the cache holds
-        prefix+response (a final check usually already advanced it, making the
-        forward here a no-op), then marks the current cached tokens as the
-        committed base for the next turn."""
-        self._advance_response(response)
-        self._committed_ids = list(self.cached_seq)
-        self.history.append((self.prompt, response))
-
-    def reset_conversation(self):
-        """Drop all conversation state — new conversation, same loaded model.
-        Called by GuardedSession.reset() and after every block (a block ends the
-        conversation)."""
-        self.cache = None
-        self.cached_seq = []
-        self._prefix_ids = []
-        self._committed_ids = []
-        self.history = []
-        self.prompt = None
+        prefix_text = PREFIX_OPEN + build_header(prompt, self.guard_prompt)
+        prefix_ids = self.tokenizer.encode(prefix_text, add_special_tokens=False)
+        ids = torch.tensor([prefix_ids]).to(self.device)
+        with torch.inference_mode():
+            out = self.model(
+                ids, attention_mask=torch.ones_like(ids), use_cache=True)
+            self.cache = out.past_key_values
+        self.cached_seq = list(prefix_ids)
+        self._prefix_ids = list(prefix_ids)
+        self._suffix_ids = self.tokenizer.encode(SUFFIX, add_special_tokens=False)
 
     # ---- scoring ----------------------------------------------------------
     @torch.inference_mode()
@@ -324,10 +220,8 @@ class GemmaGuard:
 
     @torch.inference_mode()
     def score_full(self, response_so_far, tokens_ms=None):
-        """Full-recompute P(harmful) for the CURRENT exchange, INCLUDING all
-        committed history (it's already in _prefix_ids) — the ground-truth oracle
-        the incremental path is verified against. One forward over
-        prefix + response + suffix."""
+        """Full-recompute P(harmful) for an exchange — the ground truth used to
+        verify the incremental path. One forward over the whole input."""
         resp_ids = self.tokenizer.encode(response_so_far, add_special_tokens=False)
         full_ids = self._prefix_ids + resp_ids + self._suffix_ids
         ids = torch.tensor([full_ids]).to(self.device)
@@ -358,12 +252,6 @@ class GemmaGuard:
         crop of the response tail; if that also hits the window limit we
         re-prime with one full forward over the matched prefix.
 
-        MULTI-TURN (2026-08-13): the cache is persistent across turns. On the
-        FIRST check of a turn, cached_seq holds the committed history and the delta
-        forwarded here is `this-turn-header + response` (append-only, no cross-turn
-        crop); on later checks it's just the new response tokens. The suffix-scoring
-        and numerics below are turn-count-independent.
-
         NUMERICS (resolved 2026-08-13, laptop CPU repro + fp32 ablation —
         tests/debug_kv.py): an earlier CUDA run showed ~0.004 wobble vs
         `score_full` and bit-identical P-values across different lengths, and
@@ -377,10 +265,36 @@ class GemmaGuard:
         — negligible except in knife-edge cases; keep bf16 and the cache.
         """
         t0 = time.time()
-        resp_ids = self._advance_response(response_so_far)
+        resp_ids = self.tokenizer.encode(response_so_far, add_special_tokens=False)
+        target_ids = self._prefix_ids + resp_ids  # the REAL cache target (no suffix)
 
-        # Score: forward the suffix over a throwaway deep copy. The real cache
-        # stays exactly prefix + response-so-far (never the suffix).
+        # Align: the cached sequence must be a strict prefix of target_ids.
+        L = longest_common_prefix_len(self.cached_seq, target_ids)
+        if L < len(self.cached_seq):
+            try:
+                self.cache.crop(L)
+            except ValueError:
+                # Sliding-window layers can't crop beyond their window —
+                # re-prime with one full forward over the matched prefix.
+                ids = torch.tensor([target_ids[:L]]).to(self.device)
+                out = self.model(ids, attention_mask=torch.ones_like(ids),
+                                 use_cache=True)
+                self.cache = out.past_key_values
+            self.cached_seq = target_ids[:L]
+
+        # 1) Advance the real cache over the response delta only (never the
+        #    template suffix, so no crop-back is ever needed).
+        delta = target_ids[L:]
+        if delta:
+            mask = torch.ones(1, L + len(delta), dtype=torch.long).to(self.device)
+            out = self.model(
+                input_ids=torch.tensor([delta]).to(self.device),
+                attention_mask=mask, past_key_values=self.cache, use_cache=True)
+            self.cache = out.past_key_values
+            self.cached_seq = self.cached_seq + delta  # == target_ids
+
+        # 2) Score: forward the suffix over a throwaway deep copy. The real
+        #    cache stays exactly prefix + response-so-far.
         work = copy.deepcopy(self.cache)
         n = len(self.cached_seq)
         mask = torch.ones(1, n + len(self._suffix_ids), dtype=torch.long).to(self.device)
@@ -391,53 +305,6 @@ class GemmaGuard:
 
         ms = (time.time() - t0) * 1000.0
         return p, len(resp_ids), ms
-
-    @torch.inference_mode()
-    def _advance_response(self, response_so_far):
-        """Advance the REAL (persistent) cache so it holds _prefix_ids + response,
-        and return the response token ids. On a turn's first call the delta is
-        `header + response` (appended after the committed history — append-only, no
-        cross-turn crop); on later calls it's the new response tail only.
-
-        BPE boundary care: re-tokenizing the growing response may not share a clean
-        suffix with the cached response tokens, so align cached_seq against the
-        target and re-forward only the diverging tail. If that tail-crop hits the
-        gemma-3 sliding-window limit (cumulative_length >= 512), re-prime the
-        matched prefix with one full forward instead of cropping."""
-        resp_ids = self.tokenizer.encode(response_so_far, add_special_tokens=False)
-        target_ids = self._prefix_ids + resp_ids  # the REAL cache target (no suffix)
-
-        L = longest_common_prefix_len(self.cached_seq, target_ids)
-        if L < len(self.cached_seq):
-            try:
-                self.cache.crop(L)
-                self.cached_seq = target_ids[:L]
-            except ValueError:
-                # Sliding-window layers refuse to crop past their window —
-                # re-prime the matched prefix with one full forward.
-                self._reprime(target_ids[:L])
-        self._forward_append(target_ids[L:])
-        return resp_ids
-
-    def _forward_append(self, delta_ids):
-        """Forward delta_ids over the current (persistent) cache, append-only;
-        advances self.cache and self.cached_seq. delta_ids may be empty (no-op)."""
-        if not delta_ids:
-            return
-        total = len(self.cached_seq) + len(delta_ids)
-        mask = torch.ones(1, total, dtype=torch.long).to(self.device)
-        out = self.model(
-            input_ids=torch.tensor([delta_ids]).to(self.device),
-            attention_mask=mask, past_key_values=self.cache, use_cache=True)
-        self.cache = out.past_key_values
-        self.cached_seq = self.cached_seq + list(delta_ids)
-
-    def _reprime(self, ids):
-        """Rebuild the cache from scratch over `ids` (used when a crop is refused
-        by the sliding-window layers). One full forward; cached_seq := ids."""
-        self.cache = None
-        self.cached_seq = []
-        self._forward_append(list(ids))
 
     def close(self):
         import gc
@@ -539,20 +406,12 @@ class GuardedSession:
         }
 
     def reset(self):
-        """New conversation, same loaded models. Clears BOTH the target-visible
-        message history AND the guard's persistent multi-turn cache — they must
-        stay in lockstep (the invariant a block exists to protect)."""
+        """New conversation, same loaded models."""
         self.messages = []
-        self.guard.reset_conversation()
 
     # ---- the guarded turn -------------------------------------------------
     def send(self, user_message):
-        """Generator: run a guarded multi-turn exchange and yield events.
-
-        Pipeline: pre-check -> producer thread (SSE -> buffer, bounded
-        read-ahead) + checker thread (guard over the growing buffer) -> this
-        generator releases the verified frontier at a paced trickle. See
-        PACED VERIFIED DISPLAY in the module docstring."""
+        """Generator: run a guarded multi-turn exchange and yield events."""
         content_so_far = ""
         reasoning_so_far = ""
         checks = []
@@ -602,15 +461,9 @@ class GuardedSession:
                     "n_tokens": n_tok,
                     "finish_reason": "blocked",
                     "partial_response": "",
-                    "conversation_reset": True,
                 }
-                # Log BEFORE the reset: `messages_after` is evidence of the
-                # history the turn produced (incl. the substituted notice);
-                # `conversation_reset` in the logged verdict marks that it was
-                # then discarded.
                 self._log_turn(user_message, "", "", checks, verdict,
                                self.messages)
-                self.reset()
                 yield {"type": "verdict", **verdict}
                 return
 
@@ -621,245 +474,66 @@ class GuardedSession:
             self.messages.pop()
             return
 
-        # ---- streaming pipeline -------------------------------------------
-        # producer: OpenRouter SSE -> buf. Bounded read-ahead: it pauses
-        # whenever the buffered text runs more than `window_chars` (~2 chunks)
-        # past the guard's verified frontier, so the target can never race far
-        # ahead of the classifier (caps classifier/model lag and abort waste;
-        # TCP backpressure does the actual throttling once buffers fill).
-        # checker: classifies buffer snapshots in arrival order — the
-        # incremental KV cache requires monotonic prefixes, hence ONE checker.
-        # This generator is the only other guard client, and only while the
-        # checker is stopped (pre-check above, final check below).
-        cond = threading.Condition()
-        stop = threading.Event()
-        buf = {"text": "", "reasoning": "", "done": False,
-               "finish_reason": None, "error": None}
-        frontier = {"verified": 0}  # chars of buf["text"] the guard has cleared
-        window_chars = max(8, self.check_every * 8)  # ~2 chunks (~4 chars/tok)
-        check_req = queue.Queue(maxsize=1)
-        check_res = queue.Queue()
-
-        def produce():
-            try:
-                for event in self._read_stream(stream):
-                    if stop.is_set():
-                        return
-                    etype = event.get("type")
-                    with cond:
-                        if etype == "token":
-                            buf["text"] += event["text"]
-                        elif etype == "reasoning":
-                            buf["reasoning"] += event["text"]
-                        elif etype == "finish":
-                            buf["finish_reason"] = event["finish_reason"]
-                        elif etype == "error":
-                            buf["error"] = event["message"]
-                            buf["done"] = True
-                        cond.notify_all()
-                        if buf["done"]:
-                            return
-                        while (not stop.is_set()
-                               and len(buf["text"]) - frontier["verified"]
-                               > window_chars):
-                            cond.wait(timeout=0.1)
-            except urllib.error.HTTPError as e:
-                try:
-                    body = e.read().decode(errors="replace")[:300]
-                except Exception:
-                    body = ""
-                with cond:
-                    if not stop.is_set():
-                        buf["error"] = f"HTTP {e.code}: {body}"
-                        buf["done"] = True
-                    cond.notify_all()
-            except Exception as e:  # network / parse / aborted mid-read
-                with cond:
-                    if not stop.is_set():
-                        buf["error"] = repr(e)
-                        buf["done"] = True
-                    cond.notify_all()
-            else:
-                with cond:
-                    buf["done"] = True
-                    cond.notify_all()
-
-        def check_worker():
-            while not stop.is_set():
-                try:
-                    snap = check_req.get(timeout=0.05)
-                except queue.Empty:
-                    continue
-                try:
-                    p, n_tok, ms = self.guard.check_incremental(snap)
-                except Exception as e:
-                    check_res.put(("error", repr(e)))
+        try:
+            for event in self._read_stream(stream):
+                etype = event.get("type")
+                if etype == "token":
+                    content_so_far += event["text"]
+                    yield {"type": "token", "text": event["text"]}
+                    # Tokens stream in; run a check once enough NEW tokens have
+                    # arrived since the previous check.
+                    if self._check_due(content_so_far, last_token_count):
+                        p, n_tok, ms = self.guard.check_incremental(content_so_far)
+                        last_token_count = n_tok
+                        checks.append({"n_tokens": n_tok, "p_harmful": p, "ms": ms})
+                        self._record_check(p, ms)
+                        yield {"type": "check", "n_tokens": n_tok,
+                               "p_harmful": p, "ms": round(ms, 1)}
+                        if p >= self.threshold:
+                            blocked = True
+                            block_p = p
+                            block_n = n_tok
+                            self._blocks += 1
+                            self._abort_stream(stream)
+                            finish_reason = "blocked"
+                            break
+                elif etype == "reasoning":
+                    reasoning_so_far += event["text"]
+                    yield {"type": "reasoning", "text": event["text"]}
+                elif etype == "finish":
+                    finish_reason = event["finish_reason"]
+                elif etype == "error":
+                    yield {"type": "error", "message": event["message"]}
+                    self.messages.pop()
                     return
-                check_res.put(("check", p, n_tok, ms, len(snap)))
-
-        produce_t = threading.Thread(target=produce, daemon=True,
-                                     name="aegis-producer")
-        check_t = threading.Thread(target=check_worker, daemon=True,
-                                   name="aegis-checker")
-        produce_t.start()
-        check_t.start()
-
-        displayed = 0          # chars of buf["text"] released to the frontend
-        reasoning_shown = 0
-        submitted_chars = 0    # len of the last snapshot handed to the checker
-        outstanding = False    # a snapshot is in the checker, result pending
-        ema_ms = None          # EMA of check latency, drives the display pace
-
-        def pace_s_per_char():
-            # Drain one verified chunk over ~the next check's latency: the
-            # display rides the guard's frontier (smooth, never unverified).
-            if not ema_ms:
-                return 0.02
-            return min(0.05, max(0.0002,
-                                 (ema_ms / 1000.0) / max(1, self.check_every * 4)))
-
-        def teardown(abort):
-            stop.set()
-            with cond:
-                cond.notify_all()
-            if abort:
-                self._abort_stream(stream)
-            else:
-                try:
-                    stream.close()
-                except Exception:
-                    pass
-            produce_t.join(timeout=2.0)   # never touches the guard
-            # The checker DOES touch the guard: it must be fully stopped
-            # before the final check / commit_turn / reset below. A check is
-            # one forward pass and always terminates, so wait generously.
-            check_t.join(timeout=30.0)
-
-        while True:
-            # 1) guard results — a block or guard error ends the turn here
-            try:
-                while True:
-                    res = check_res.get_nowait()
-                    outstanding = False
-                    if res[0] == "error":
-                        teardown(abort=True)
-                        yield {"type": "error",
-                               "message": f"guard check failed: {res[1]}"}
-                        self.messages.pop()
-                        return
-                    _, p, n_tok, ms, snap_len = res
-                    last_token_count = n_tok
-                    checks.append({"n_tokens": n_tok, "p_harmful": p, "ms": ms})
-                    self._record_check(p, ms)
-                    ema_ms = ms if ema_ms is None else 0.5 * ema_ms + 0.5 * ms
-                    yield {"type": "check", "n_tokens": n_tok,
-                           "p_harmful": p, "ms": round(ms, 1)}
-                    if p >= self.threshold:
-                        blocked = True
-                        block_p = p
-                        block_n = n_tok
-                        self._blocks += 1
-                        finish_reason = "blocked"
-                        break
-                    with cond:
-                        frontier["verified"] = max(frontier["verified"], snap_len)
-                        cond.notify_all()
-            except queue.Empty:
-                pass
-            if blocked:
-                break
-
-            with cond:
-                text = buf["text"]
-                reasoning = buf["reasoning"]
-                verified = frontier["verified"]
-                is_done = buf["done"]
-                stream_error = buf["error"]
-
-            # 2) stream error from the producer
-            if stream_error:
-                teardown(abort=True)
-                yield {"type": "error", "message": stream_error}
-                self.messages.pop()
-                return
-
-            # 3) reasoning passes through live (unguarded, as before)
-            if reasoning_shown < len(reasoning):
-                yield {"type": "reasoning", "text": reasoning[reasoning_shown:]}
-                reasoning_shown = len(reasoning)
-                continue
-
-            # 4) paced release of the verified frontier (~50 ms slices, so a
-            #    block result is reacted to within a slice)
-            if displayed < verified:
-                pps = pace_s_per_char()
-                n_slice = max(2, min(40, int(round(0.05 / pps))))
-                piece = text[displayed:displayed + n_slice]
-                displayed += len(piece)
-                yield {"type": "token", "text": piece}
-                time.sleep(pps * len(piece))
-                continue
-
-            # 5) feed the checker the next checkpoint. Char-gated before the
-            #    O(n) tokenize: chars >= tokens always, so a small char delta
-            #    proves the token delta is small too.
-            if not outstanding and not is_done \
-                    and len(text) - submitted_chars >= self.check_every:
-                n_tok = len(self.guard.tokenizer.encode(
-                    text, add_special_tokens=False))
-                if n_tok - last_token_count >= self.check_every:
-                    try:
-                        check_req.put_nowait(text)
-                        submitted_chars = len(text)
-                        outstanding = True
-                        continue
-                    except queue.Full:
-                        pass
-
-            # 6) clean finish: stream done, checker idle, display caught up
-            if is_done and not outstanding and displayed == verified:
-                break
-
-            with cond:
-                cond.wait(timeout=0.05)
-
-        teardown(abort=blocked)
-
-        content_so_far = buf["text"]
-        reasoning_so_far = buf["reasoning"]
-        if finish_reason is None:
-            finish_reason = buf["finish_reason"]
+        except urllib.error.HTTPError as e:
+            yield {"type": "error", "message": f"HTTP {e.code}: {e.read().decode(errors='replace')[:300]}"}
+            self.messages.pop()
+            return
+        except Exception as e:  # network / parse
+            yield {"type": "error", "message": repr(e)}
+            self.messages.pop()
+            return
+        finally:
+            stream.close()
 
         # Final check at stream end (short responses like refusals never reach
-        # a mid-stream checkpoint) — unless already blocked. The checker thread
-        # is joined by now, so this synchronous call cannot race it. Skipped
-        # when the last mid-stream check already covered the full response.
+        # a mid-stream checkpoint) — unless already blocked.
         if not blocked:
-            n_final = len(self.guard.tokenizer.encode(
-                content_so_far, add_special_tokens=False))
-            if not checks or checks[-1]["n_tokens"] < n_final:
-                try:
-                    p, n_tok, ms = self.guard.check_incremental(content_so_far)
-                    checks.append({"n_tokens": n_tok, "p_harmful": p, "ms": ms})
-                    self._record_check(p, ms)
-                    yield {"type": "check", "n_tokens": n_tok, "p_harmful": p,
-                           "ms": round(ms, 1)}
-                    if p >= self.threshold and content_so_far:
-                        blocked = True
-                        block_p = p
-                        block_n = n_tok
-                        self._blocks += 1
-                        finish_reason = "blocked"
-                except Exception as e:
-                    yield {"type": "error", "message": f"final check failed: {e!r}"}
-
-        # A passed final check clears the tail: release whatever is left.
-        if not blocked:
-            while displayed < len(content_so_far):
-                piece = content_so_far[displayed:displayed + 40]
-                displayed += len(piece)
-                yield {"type": "token", "text": piece}
-                time.sleep(pace_s_per_char() * len(piece))
+            try:
+                p, n_tok, ms = self.guard.check_incremental(content_so_far)
+                checks.append({"n_tokens": n_tok, "p_harmful": p, "ms": ms})
+                self._record_check(p, ms)
+                yield {"type": "check", "n_tokens": n_tok, "p_harmful": p,
+                       "ms": round(ms, 1)}
+                if p >= self.threshold and content_so_far:
+                    blocked = True
+                    block_p = p
+                    block_n = n_tok
+                    self._blocks += 1
+                    finish_reason = "blocked"
+            except Exception as e:
+                yield {"type": "error", "message": f"final check failed: {e!r}"}
 
         # Update model-visible history. On a block the real partial NEVER
         # reaches the model — a fixed notice is substituted instead.
@@ -880,24 +554,17 @@ class GuardedSession:
             "n_tokens": block_n if blocked else (checks[-1]["n_tokens"] if checks else 0),
             "finish_reason": finish_reason,
             "partial_response": content_so_far,
-            # Paced verified display: how much of partial_response the user
-            # actually SAW (always <= the guard-cleared frontier). Evidence.
-            "n_shown_chars": displayed,
-            # A block ends the conversation — see the module docstring.
-            "conversation_reset": blocked,
         }
-        # Log before the reset (see the pre-check path for why).
         self._log_turn(user_message, content_so_far, reasoning_so_far, checks,
                        verdict, self.messages)
-        if blocked:
-            self.reset()
-        else:
-            # Freeze this turn into the guard's conversation so the NEXT turn's
-            # classifier input includes it (history-aware guarding).
-            self.guard.commit_turn(content_so_far)
         yield {"type": "verdict", **verdict}
 
     # ---- internals --------------------------------------------------------
+    def _check_due(self, content_so_far, last_token_count):
+        n = self.guard.tokenizer.encode(content_so_far, add_special_tokens=False)
+        cur = len(n)
+        return cur - last_token_count >= self.check_every
+
     def _record_check(self, p, ms):
         self._checks_run += 1
         self._check_latencies.append(ms)
