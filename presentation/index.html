@@ -412,16 +412,26 @@
 
 
   <!-- ==================================================================
-       SLIDE 22 — §8 Red teaming [?].  📋 TABLE: knowledge-probe aliases, 3 model
-       columns (1B base / 1B+LoRA / 4B) — all fail the aliases, all know the
-       famous names.  Structural, not fixable by scale; defending would mean
-       blocking chemistry as a topic.  STATUS: ✅ gemma_knowledge_probe/REPORT.md.
+       SLIDE 22 — §8 Red teaming [?].  🧩 DIAGRAM: classifier_knowledge_probe.svg
+       — base model names the chemical from the common name but hallucinates from
+       the technical description.  (Planned TABLE of aliases, 3 model columns
+       (1B base / 1B+LoRA / 4B) — all fail the aliases, all know the famous
+       names — in gemma_knowledge_probe/REPORT.md if a table is wanted too.)
+       Structural, not fixable by scale; defending would mean blocking chemistry
+       as a topic.  STATUS: ✅ asset placed.
        ================================================================== -->
   <section class="slide slide--light">
     <img class="logo logo--content" src="psiml-logo.png" alt="">
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Unguardable at 1B: the gap is knowledge, not capacity
     </h1>
+
+    <div class="at" style="--x:67; --y:170; --w:1075; --h:426">
+      <img class="slide-img" src="classifier_knowledge_probe.svg"
+           alt="the classifier's base model, asked directly, identifies chemicals by common name but hallucinates when given the technical description of the same chemical"
+           style="width:100%; height:100%; object-fit:contain">
+    </div>
+
     <div class="slide-number">19</div>
   </section>
 
