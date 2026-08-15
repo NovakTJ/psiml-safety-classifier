@@ -1,4 +1,4 @@
-# Lazar's spoken pitch — slides 12-14, 17-20
+# Lazar's spoken pitch — slides 8-10, 13-16
 
 Confirmed-yours sections only (§3, §6, and — as of the ownership swap on 2026-08-15 —
 §8 "Red teaming" from `CLAUDE-PLAN.md`; Novak now covers §7 "Inference system" incl.
@@ -13,7 +13,7 @@ this file if the spoken text changes further.
 
 ---
 
-## Slide 12 — "Architectures we tried" (text-free list; you're planning to talk more
+## Slide 8 — "Architectures we tried" (text-free list; you're planning to talk more
 here — this section only covers the on-screen list, not your extra ad-libbed content)
 
 Five items, in build order, Qwen3Guard kept at the end as the external SOTA
@@ -36,7 +36,7 @@ so treat this as the floor, not the target.
 
 ---
 
-## Slide 13 — "Results: five systems on the held-out test set" (§6, ~50s of the 1:45)
+## Slide 9 — "Results: five systems on the held-out test set" (§6, ~50s of the 1:45)
 
 ⚠️ **Title change from the plan's "six systems" — see the note below the pitch.**
 
@@ -55,7 +55,7 @@ so treat this as the floor, not the target.
 
 ---
 
-## Slide 14 — "We are data-limited, not architecture-limited" (§6, ~15s)
+## Slide 10 — "We are data-limited, not architecture-limited" (§6, ~15s)
 
 > And the learning curve is still climbing at full data — about **+0.02 F1 every time
 > we double the training set**. We didn't run out of signal to learn from; we ran out
@@ -67,7 +67,7 @@ we double the training set"), so nothing extra needed, but don't drop that line.
 
 ---
 
-## Slide 17 — "Red teaming with a frontier coding agent" (§8, ~20s)
+## Slide 13 — "Red teaming with a frontier coding agent" (§8, ~20s)
 
 Section-opener, title only on screen + the task-brief image (`REDTEAM-FIRST-TRY/OLD-CLAUDE.md`).
 Proposed on-screen bullets (3, matching the "architectures" slide's bare-list style —
@@ -91,7 +91,7 @@ closing detail to say out loud)
 
 ---
 
-## Slide 18 — "Example of an attack that worked" (§8, ~45s)
+## Slide 14 — "Example of an attack that worked" (§8, ~45s)
 
 **Superseded 2026-08-15** — the plain-bullet version below was replaced by merging
 in Novak's `two_stage_classifier_bypass.svg` diagram instead (conflict resolved in
@@ -129,19 +129,19 @@ payload of the slide):**
 
 ---
 
-## Cut: "Fine-tuning traded recall for precision" (was slide 19)
+## Cut: "Fine-tuning traded recall for precision" (was slide 15)
 
 Removed from the deck (2026-08-15) — same "ne treba nam" pattern as the probe-pooling
 slide. The finding itself (zero-shot Gemma blocks pipe-bomb/ANFO/nitroglycerin prompts
 that the fine-tuned LoRA guard passes — the tuned model over-corrected on
 "exam"/"report"/"literature" framing as a signal for *unharmful*, a regression
 invisible to the results-table metrics) is still real and still in
-`REDTEAM-FIRST-TRY/CLAUDE.md` — say it as an ad-lib during slide 18 or 19 if there's
+`REDTEAM-FIRST-TRY/CLAUDE.md` — say it as an ad-lib during slide 14 or 15 if there's
 time, there's no dedicated slide for it anymore.
 
 ---
 
-## Slide 19 — "Unguardable at 1B: the gap is knowledge, not capacity" (§8, ~30s)
+## Slide 15 — "Unguardable at 1B: the gap is knowledge, not capacity" (§8, ~30s)
 
 Table slide (3 model columns: 1B base / 1B+LoRA / 4B, on the same aliases) — this is
 the knowledge-probe follow-up, not from `REDTEAM-FIRST-TRY/` directly but from
@@ -163,8 +163,8 @@ running long).
 
 ---
 
-## Section total (slides 17-19): ~350 words, ≈1:50 — a touch over the plan's
-7:15-9:00 (1:45) budget; the diagram-explanation on slide 18 is the easiest trim
+## Section total (slides 13-15): ~350 words, ≈1:50 — a touch over the plan's
+7:15-9:00 (1:45) budget; the diagram-explanation on slide 14 is the easiest trim
 if you're running long.
 
 ---
@@ -176,26 +176,26 @@ this slide and its content are gone from the deck (was slide 15: prompt-pool vs
 response-pool F1/switched-recall comparison). If you still want to make this point
 verbally somewhere (it's one of the stronger findings — a probe selected on
 validation F1 alone was blind to the exact failure mode it needed to catch), it'd
-now have to happen as an ad-lib on slide 12 or 13, there's no dedicated slide for it
+now have to happen as an ad-lib on slide 8 or 13, there's no dedicated slide for it
 anymore.
 
 ---
 
-## Grand total (all sections, fixed slides only, excluding slide 12's open-ended
-ad-lib): ~525 words, ≈2:50 — slides 12-14 (~175 words, ≈1:00) + slides 17-19
+## Grand total (all sections, fixed slides only, excluding slide 8's open-ended
+ad-lib): ~525 words, ≈2:50 — slides 8-10 (~175 words, ≈1:00) + slides 13-15
 (~350 words, ≈1:50). Two separate speaking blocks in the deck, not back-to-back.
 
 The "LoRA config is a real sweep, not one run" content (12-config grid, dropout
 finding, 3-seed stability check 0.965 ± 0.003) had its own slide, tried as both a
 19-point chart and a grouped/generalized chart — neither worked visually, so the
-slide was cut. Fold whatever of that you still want to say into slide 12's ad-lib
+slide was cut. Fold whatever of that you still want to say into slide 8's ad-lib
 time instead of a dedicated slide.
 
 ## ⚠️ Open decision: "six systems" vs "five"
 
 `main_results.png` shows **5** systems — the regex baseline was dropped from the chart
 itself because F1 0.058 flattens the other bars into a sliver. The script's "floor"
-beat still needs the regex number, so slide 13's pitch mentions it **as a spoken
+beat still needs the regex number, so slide 9's pitch mentions it **as a spoken
 number, not a chart bar**. The slide's `<h1>` was changed from the plan's "six
 systems" to "five systems" to match what's actually shown — tell me if you'd rather
 keep "six" and word the h1 differently instead (e.g. drop the count: "Results on the
