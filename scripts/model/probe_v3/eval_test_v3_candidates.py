@@ -20,15 +20,20 @@ Requires: capture_probe_multilayer.py --split test already run (GPU).
 
 Run with ccpp_env (CPU-only, no GPU needed):
 
-    /home/mls01/ccpp_env/bin/python scripts/model/eval_test_v3_candidates.py
+    /home/mls01/ccpp_env/bin/python scripts/model/probe_v3/eval_test_v3_candidates.py
 """
 
 import csv
 import json
 import os
+import sys
+from pathlib import Path
 
 import joblib
 import numpy as np
+
+# probe_v2_common.py (teammate's, shared) lives one level up in scripts/model/.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import capture_probe_multilayer as CM
 import probe_v2_common as C

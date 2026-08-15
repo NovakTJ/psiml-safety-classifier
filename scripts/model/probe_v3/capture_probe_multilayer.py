@@ -44,19 +44,25 @@ progress_{split}.jsonl gets one appended, fsync'd line per row.
 Run (qwen35_env, only env with transformers 5.x for qwen3_5):
 
     /home/mls01/.conda/envs/qwen35_env/bin/python \\
-        scripts/model/capture_probe_multilayer.py --split validation
+        scripts/model/probe_v3/capture_probe_multilayer.py --split validation
 
 Sanity check on a handful of rows before a full run:
 
     /home/mls01/.conda/envs/qwen35_env/bin/python \\
-        scripts/model/capture_probe_multilayer.py --split validation \\
+        scripts/model/probe_v3/capture_probe_multilayer.py --split validation \\
         --limit 8 --out-dir results/linear_probe_v3_multilayer_pooling/sanity_check
 """
 
 import argparse
 import json
 import os
+import sys
 import time
+from pathlib import Path
+
+# probe_v2_common.py (teammate's, shared) lives one level up in scripts/model/,
+# not in this probe_v3/ subfolder -- must be on sys.path before importing it.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # --- REQUIRED env-var block (must precede torch/transformers import) ---
 os.environ.setdefault("USER", "mls01")

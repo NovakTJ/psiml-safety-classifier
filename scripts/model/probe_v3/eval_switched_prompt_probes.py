@@ -27,12 +27,17 @@ retraining of the underlying pipelines' hyperparameters:
 Run with qwen35_env (needs the model for a fresh 51-row activation capture):
 
     /home/mls01/.conda/envs/qwen35_env/bin/python \\
-        scripts/model/eval_switched_prompt_probes.py
+        scripts/model/probe_v3/eval_switched_prompt_probes.py
 """
 
 import json
 import os
+import sys
 import time
+from pathlib import Path
+
+# probe_v2_common.py (teammate's, shared) lives one level up in scripts/model/.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # --- REQUIRED env-var block (must precede torch/transformers import) ---
 os.environ.setdefault("USER", "mls01")

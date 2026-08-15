@@ -18,7 +18,7 @@ Run with ccpp_env (GPU, Gemma-3-1B, ~486 rows val+test, one forward pass
 each):
 
     /home/mls01/ccpp_env/bin/python \\
-        scripts/model/extract_lora_logit_scores_attention_only.py
+        scripts/model/ensemble_v3/extract_lora_logit_scores_attention_only.py
 """
 
 import os
@@ -44,7 +44,9 @@ from pathlib import Path  # noqa: E402
 
 import pandas as pd  # noqa: E402
 
-SCRIPT_DIR = Path(__file__).resolve().parent
+# sweep_lora_v2_phase2.py (teammate's, shared) and results/ both live one
+# level up in scripts/model/, not in this ensemble_v3/ subfolder.
+SCRIPT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(SCRIPT_DIR))
 import sweep_lora_v2_phase2 as p2  # noqa: E402  (reuse exact pipeline, not reimplemented)
 

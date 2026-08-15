@@ -34,16 +34,21 @@ matching attempt 2's guard).
 
 Run with ccpp_env (no GPU needed):
 
-    /home/mls01/ccpp_env/bin/python scripts/model/sweep_probe_v3_layer_pooling.py
+    /home/mls01/ccpp_env/bin/python scripts/model/probe_v3/sweep_probe_v3_layer_pooling.py
 """
 
 import csv
 import json
 import os
+import sys
 import time
 import warnings
+from pathlib import Path
 
 import numpy as np
+
+# probe_v2_common.py (teammate's, shared) lives one level up in scripts/model/.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import capture_probe_multilayer as CM
 import probe_v2_common as C

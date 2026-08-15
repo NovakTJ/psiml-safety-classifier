@@ -28,14 +28,19 @@ Journey (full detail in the three prior REPORT.md files):
 
 Run with ccpp_env (CPU-only, needs the already-cached v3 train activations):
 
-    /home/mls01/ccpp_env/bin/python scripts/model/lock_probe_v3.py
+    /home/mls01/ccpp_env/bin/python scripts/model/probe_v3/lock_probe_v3.py
 """
 
 import json
 import os
+import sys
+from pathlib import Path
 
 import joblib
 import numpy as np
+
+# probe_v2_common.py (teammate's, shared) lives one level up in scripts/model/.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import capture_probe_multilayer as CM
 import probe_v2_common as C

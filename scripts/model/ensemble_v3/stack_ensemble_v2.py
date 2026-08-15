@@ -24,7 +24,7 @@ test look, instead of assuming more signals automatically helps.
 
 Run with ccpp_env (CPU-only):
 
-    /home/mls01/ccpp_env/bin/python scripts/model/stack_ensemble_v2.py
+    /home/mls01/ccpp_env/bin/python scripts/model/ensemble_v3/stack_ensemble_v2.py
 """
 
 import json
