@@ -62,6 +62,7 @@ import os
 import queue
 import sys
 import threading
+import time
 from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -71,6 +72,9 @@ from core import (DEFAULT_LOG_DIR, MODEL_ID, REPO_ROOT,  # noqa: E402
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect  # noqa: E402
 from fastapi.responses import HTMLResponse, JSONResponse  # noqa: E402
+
+# Seconds a seat holder may sit idle while others wait before losing the seat.
+DEFAULT_IDLE_TIMEOUT = 60.0
 
 
 # ---------------------------------------------------------------------------
@@ -128,13 +132,29 @@ class WebSessionLogger(SessionLogger):
 # on the 7 GB laptop / small GCP VM this is hosted on (see PLAN.md).
 # ---------------------------------------------------------------------------
 class Seat:
-    """One connection's place in line. `notify(event)` and `on_grant()` are
-    async callables owned by that connection's WebSocket handler."""
+    """One connection's place in line. `notify(event)`, `on_grant()` and
+    `on_revoke()` are async callables owned by that connection's WebSocket
+    handler.
 
-    def __init__(self, notify, on_grant):
+    `last_active` is monotonic seconds of the last thing this connection DID
+    (seat granted, message received, turn finished) — an open tab that merely
+    stays connected does not refresh it, which is the whole point: holding the
+    seat is about using the guard, not about owning a socket. `busy` is true
+    only while a turn is actually running, and a busy holder is never evicted."""
+
+    def __init__(self, notify, on_grant, on_revoke=None):
         self.notify = notify
         self.on_grant = on_grant
+        self.on_revoke = on_revoke
         self.active = False
+        self.busy = False
+        self.last_active = time.monotonic()
+
+    def touch(self):
+        self.last_active = time.monotonic()
+
+    def idle_for(self):
+        return time.monotonic() - self.last_active
 
 
 class SeatManager:
@@ -146,9 +166,12 @@ class SeatManager:
     a third client's socket). All notifies are best-effort — a waiter whose
     socket already died must never break promotion for everyone behind it."""
 
-    def __init__(self):
+    def __init__(self, idle_timeout=DEFAULT_IDLE_TIMEOUT, sweep_every=5.0):
         self._line = []
         self._lock = asyncio.Lock()
+        self._idle_timeout = idle_timeout
+        self._sweep_every = sweep_every
+        self._sweeper = None
 
     def position(self, seat):
         """1-based place in the waiting line (0 = holds the seat, -1 = gone)."""
@@ -161,6 +184,10 @@ class SeatManager:
         return max(0, len(self._line) - 1)
 
     async def join(self, seat):
+        # The sweeper starts lazily on the first join: no app lifecycle hook to
+        # wire, and tests that never join never spawn a background task.
+        if self._sweeper is None and self._idle_timeout:
+            self._sweeper = asyncio.create_task(self._sweep_loop())
         async with self._lock:
             self._line.append(seat)
             if len(self._line) == 1:
@@ -177,6 +204,50 @@ class SeatManager:
             if was_holder and self._line:
                 await self._grant(self._line[0])
             await self._broadcast()
+
+    async def _sweep_loop(self):
+        """Evict a holder who has gone idle WHILE SOMEONE IS WAITING.
+
+        Only when the line is contended: a lone user reading a long answer is
+        never kicked, because kicking them would free nothing. The eviction is
+        what makes an abandoned tab (the failure mode in the wild: someone
+        closes their laptop lid without closing the page) stop owning the
+        single shared guard."""
+        while True:
+            try:
+                await asyncio.sleep(self._sweep_every)
+                async with self._lock:
+                    if len(self._line) < 2:
+                        continue
+                    holder = self._line[0]
+                    if holder.busy or holder.idle_for() < self._idle_timeout:
+                        continue
+                    await self._revoke(holder)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                pass  # a sweeper that dies would silently restore the old bug
+
+    async def _revoke(self, seat):
+        """Caller holds the lock. Drops `seat` from the line, promotes the next
+        person, and only THEN closes the evicted socket — so the handover is
+        already done when the evicted handler wakes up and calls leave()
+        (a no-op, since the seat is no longer in the line)."""
+        self._line.remove(seat)
+        seat.active = False
+        try:
+            await seat.notify({"type": "seat", "state": "revoked",
+                               "idle_timeout": self._idle_timeout})
+        except Exception:
+            pass
+        if self._line:
+            await self._grant(self._line[0])
+        await self._broadcast()
+        if seat.on_revoke is not None:
+            try:
+                await seat.on_revoke()
+            except Exception:
+                pass
 
     async def _grant(self, seat):
         seat.active = True
@@ -201,10 +272,13 @@ class SeatManager:
 # (canned events, no model/network) instead of real GuardedSessions.
 # ---------------------------------------------------------------------------
 def create_app(shared_guard=None, session_kwargs=None, token=None,
-               session_factory=None, log_dir=DEFAULT_LOG_DIR):
+               session_factory=None, log_dir=DEFAULT_LOG_DIR,
+               idle_timeout=DEFAULT_IDLE_TIMEOUT):
     app = FastAPI(title="aegis-web", docs_url=None, redoc_url=None)
     turn_lock = threading.Lock()  # serializes guard turns across connections
-    seats = SeatManager()         # ... and serializes CONVERSATIONS (see above)
+    # ... and serializes CONVERSATIONS (see above), evicting idle holders so an
+    # abandoned tab can't hold the single guard against a waiting queue.
+    seats = SeatManager(idle_timeout=idle_timeout)
 
     if log_dir and not os.path.isabs(log_dir):
         log_dir = os.path.join(REPO_ROOT, log_dir)
@@ -273,6 +347,7 @@ def create_app(shared_guard=None, session_kwargs=None, token=None,
             previous holder that disconnected mid-turn may still have a worker
             thread inside the guard, and only the turn lock knows when it ends."""
             state["session"] = make_session()
+            seat.touch()  # the idle clock starts when the seat is granted
             await ws.send_json({"type": "seat", "state": "active"})
             await ws.send_json({"type": "ready",
                                 "config": public_config(state["session"])})
@@ -287,11 +362,20 @@ def create_app(shared_guard=None, session_kwargs=None, token=None,
                     shared_guard.reset_conversation()
                 state["fresh"] = False
 
-        seat = Seat(notify=notify, on_grant=on_grant)
+        async def on_revoke():
+            """Idle eviction: close the socket so the receive loop unwinds and
+            the connection's log file is closed like any other departure."""
+            try:
+                await ws.close(code=4408)
+            except Exception:
+                pass
+
+        seat = Seat(notify=notify, on_grant=on_grant, on_revoke=on_revoke)
         await seats.join(seat)
         try:
             while True:
                 msg = await ws.receive_json()
+                seat.touch()
                 if not seat.active:
                     pos = seats.position(seat)
                     await ws.send_json({
@@ -318,8 +402,13 @@ def create_app(shared_guard=None, session_kwargs=None, token=None,
                         await ws.send_json({"type": "error",
                                             "message": "empty message"})
                         continue
-                    await _run_turn(ws, session, text, turn_lock, loop,
-                                    pre_turn=pre_turn)
+                    seat.busy = True  # a running turn is never evicted
+                    try:
+                        await _run_turn(ws, session, text, turn_lock, loop,
+                                        pre_turn=pre_turn)
+                    finally:
+                        seat.busy = False
+                        seat.touch()  # idle clock restarts when the turn ends
                 else:
                     await ws.send_json({"type": "error",
                                         "message": f"unknown message type {mtype!r}"})
@@ -382,7 +471,7 @@ PAGE_HTML = r"""<!DOCTYPE html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AEGIS — guarded chat</title>
+<title>ECKA — guarded chat</title>
 <style>
   :root { --bg:#0f1115; --panel:#171a21; --border:#2a2f3a; --fg:#dde3ec;
           --dim:#8b93a3; --accent:#5aa9ff; --red:#ff5a5a; --green:#4cd07d; }
@@ -443,7 +532,7 @@ PAGE_HTML = r"""<!DOCTYPE html>
 <body>
 <div id="wrap">
   <header>
-    <h1>AEGIS <span class="tag">guarded chat</span></h1>
+    <h1>ECKA <span class="tag">guarded chat</span></h1>
     <div id="config">connecting…</div>
   </header>
   <div id="briefing">
@@ -476,11 +565,19 @@ const queueEl = document.getElementById('queue');
 const statusEl = document.getElementById('status');
 let ws = null, busy = false, cur = null;   // cur = {content, spark, vals, bubble}
 let seated = false;   // false until the server grants us the guard ("the seat")
+let revoked = false;  // seat taken away for inactivity (server closes with 4408)
 
 // The server runs ONE conversation at a time (the guard's KV cache is shared
 // state — see SeatManager in web.py). While queued the composer is locked and
 // this panel shows our place in line; the server re-sends it as the line moves.
 function renderQueue(ev) {
+  if (ev.state === 'revoked') {
+    // Idle eviction: the socket closes right after this event, so all we do
+    // here is arm the message onclose will show (see `revoked`).
+    revoked = true;
+    seated = false;
+    return;
+  }
   if (ev.state === 'active') {
     seated = true;
     queueEl.style.display = 'none';
@@ -590,14 +687,31 @@ function verdict(ev) {
 
 function connect() {
   ws = new WebSocket(wsUrl());
+  revoked = false;
   sendBtn.disabled = true;   // stays locked until the server grants the seat
   ws.onopen = () => { statusEl.textContent = 'connected — waiting for the guard'; };
   ws.onclose = (e) => {
-    statusEl.textContent = 'disconnected' + (e.code ? ` (code ${e.code})` : '');
-    seated = false; queueEl.style.display = 'none';
+    seated = false;
     sendBtn.disabled = true; resetBtn.disabled = true;
+    if (revoked || e.code === 4408) {
+      // Deliberately no auto-reconnect: an abandoned tab that silently
+      // rejoined would just take the seat back off the queue it was
+      // evicted for. Rejoining is a human clicking.
+      statusEl.textContent = 'seat released for inactivity';
+      queueEl.style.display = 'block';
+      queueEl.innerHTML =
+        '<div class="big">Your turn was given away after a period of ' +
+        'inactivity — others were waiting.</div>' +
+        '<div><button id="rejoin">Rejoin the queue</button></div>';
+      document.getElementById('rejoin').onclick = () => {
+        queueEl.innerHTML = ''; connect();
+      };
+      return;
+    }
+    statusEl.textContent = 'disconnected' + (e.code ? ` (code ${e.code})` : '');
+    queueEl.style.display = 'none';
     if (e.code === 4403) {
-      const t = prompt('This AEGIS instance requires an access token:');
+      const t = prompt('This ECKA instance requires an access token:');
       if (t) { sessionStorage.setItem('aegis_token', t); connect(); }
     }
   };
@@ -697,6 +811,10 @@ def main():
     ap.add_argument("--token", default=None,
                     help="shared access token for the WS endpoint "
                          "(REQUIRED when binding beyond localhost)")
+    ap.add_argument("--idle-timeout", type=float, default=DEFAULT_IDLE_TIMEOUT,
+                    help="seconds a seat holder may idle while others are "
+                         "waiting before the seat is taken away "
+                         f"(default {DEFAULT_IDLE_TIMEOUT:g}; 0 disables)")
     args = ap.parse_args()
 
     load_dotenv(os.path.join(REPO_ROOT, ".env"))
@@ -727,7 +845,8 @@ def main():
                           max_tokens=args.max_tokens,
                           model=args.model)
     app = create_app(shared_guard=guard, session_kwargs=session_kwargs,
-                     token=args.token, log_dir=args.log_dir)
+                     token=args.token, log_dir=args.log_dir,
+                     idle_timeout=args.idle_timeout)
 
     import uvicorn
     shown_host = "127.0.0.1" if args.host == "0.0.0.0" else args.host
