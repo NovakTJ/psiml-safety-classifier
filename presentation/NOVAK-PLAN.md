@@ -43,7 +43,7 @@ Me and lazar wanted to replicate and explore this approach, best described in An
 
 ## Methods
 
-> ⟢ [+] 🧩 **DIAGRAM** — the system picture, built up in 3 clicks:
+> ⟢ [+] 🧩 **DIAGRAM** — the system picture, built up in 3 clicks: -----lazar
 > (1) user ↔ **Qwen3.5-9B** chat model; (2) a **small guard LLM** (Gemma-3-1B) reading
 > prompt+response in parallel → harmful / unharmful; (3) a **linear probe** (logreg on
 > Qwen layer 15) reading the chat model's own activations mid-stream.
@@ -87,7 +87,7 @@ The datasets used for training frontier classifiers are hard to get. When the fi
 > (`data/switched_prompt_dataset.jsonl`) — that's the concrete size behind "we added fake
 > examples".
 
-(harmful label ko ce da objasni?)
+(harmful label ko ce da objasni?) ==lazar
 
 > ⟢ [+] Fill-in for "harmful label ko ce da objasni?" — the label rule is an **OR**:
 > an exchange is HARMFUL if the prompt is harmful **or** the response is harmful (refusal
@@ -176,7 +176,7 @@ It took X tokens, tried Y prompts before succeeding.
 > and we only saw it under attack.** (Optional here; place wherever the LoRA-vs-zero-shot
 > point is made.)
 
-So my hypothesis was thiat this is unguardable, that the small 1b model cannot know all chemicals by alternative names. And to confirm this, we asked the base version of our classifier, the publicly available gemma-3-1b which just answers questions, whether it knows these chemicals by other names and confirmed that it does not.
+So my hypothesis was thiat this is unguardable, that the small 1b model cannot know all chemicals by alternative names. And to confirm this, we asked the base version of our classifier, the publicly available gemma-3-1b which just answers questions, whether it knows these chemicals by other names and confirmed that it does not. --lazar
 
 > ⟢ [+] 📋 **TABLE — knowledge probe**, 3 model columns (from
 > `psiml_data/gemma_knowledge_probe/REPORT.md` via CLAUDE-PLAN §8): toxalbumin in castor
@@ -189,15 +189,12 @@ So my hypothesis was thiat this is unguardable, that the small 1b model cannot k
 
 To defend against this we would need to create basically an unusable classifier, it would need to block chemistry as a topic. 
 
-This outcome is 
-
-> ⟢ [+] "This outcome is" trails off in the original. This is Novak's sentence to finish —
-> not filling it in (that's your close, not mine). One direction it could land, matching
-> the closing paragraphs below: *…the clearest evidence that the remaining gap is
-> **knowledge, not capacity** — the fix is training data teaching the decision-relevant
-> surface pattern, not a bigger model.*
-
 We can suppose thta the augmentations to the dataset worked because the first attacks the agent tried were successfully blocked and they were exactly low resource langs and weird characters. 
+
+
+
+--kraj--
+
 
 (negde ovaj paragraf reci):
 Creating a good classifier is a hard problem. Most ML systems are created to handle already existing inputs. Safety classifiers need to handle requests crafted for the sole purpose of defeating the classifier. A malicious actor can iterate a lot, seeing what works and what doesnt, and the system needs to be prepared in advance to flag every harmful request - (mozda: in production 100% recall is required). On the other hand, Bad classifiers sometimes decide benign messages are harmful requests. many users who rely on these models for professional work are unhappy when their messages are wrongfully flagged. [slika?] This approach holds up and no frontier classifier jailbreak is publicly known, the recall is 100%.
