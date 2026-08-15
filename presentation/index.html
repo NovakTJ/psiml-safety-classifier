@@ -56,7 +56,6 @@
       <span class="affil">PSIML 11 &middot; project presentation</span>
     </p>
 
-    <div class="footer footer--title">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
   </section>
 
 
@@ -70,7 +69,6 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       LLMs are getting capable — and risky
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
     <div class="slide-number">2</div>
   </section>
 
@@ -85,7 +83,6 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Every frontier model has been jailbroken
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
     <div class="slide-number">3</div>
   </section>
 
@@ -100,7 +97,6 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Safety classifiers in production — and our goal
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
     <div class="slide-number">4</div>
   </section>
 
@@ -116,29 +112,12 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       The problem is adversarial
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
     <div class="slide-number">5</div>
   </section>
 
 
   <!-- ==================================================================
-       SLIDE 6 — §3 Architectures [L].  🧩 DIAGRAM: system picture, 3-click build
-       (user ↔ Qwen3.5-9B · Gemma-3-1B guard · logreg probe on layer 15)
-       + the evaluated lineup (regex · zero-shot · LoRA · probe · cascade ·
-       Qwen3Guard-8B reference).  STATUS: MAKE (draw).
-       ================================================================== -->
-  <section class="slide slide--light">
-    <img class="logo logo--content" src="psiml-logo.png" alt="">
-    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
-      Architectures we tried
-    </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
-    <div class="slide-number">6</div>
-  </section>
-
-
-  <!-- ==================================================================
-       SLIDE 7 — §3/§4 Exchange classifier [?].  Content already filled.
+       SLIDE 6 — §3/§4 Exchange classifier [?].  Content already filled.
        Geometry ported 1:1 from slideLayout4 (PSIML_CONTENT).
        ================================================================== -->
   <section class="slide slide--light">
@@ -189,13 +168,12 @@
       </div>
     </div>
 
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
-    <div class="slide-number">7</div>
+    <div class="slide-number">6</div>
   </section>
 
 
   <!-- ==================================================================
-       SLIDE 8 — §4 Dataset [N].  🧩 DIAGRAM: OR-rule truth table, 6 rows,
+       SLIDE 7 — §4 Dataset [N].  🧩 DIAGRAM: OR-rule truth table, 6 rows,
        row 4 (benign prompt + harmful response) highlighted red.
        Answers "harmful label — ko će da objasni?" (currently N's — confirm).
        STATUS: MAKE (draw).
@@ -205,13 +183,12 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       The label rule: harmful = prompt OR response
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
-    <div class="slide-number">8</div>
+    <div class="slide-number">7</div>
   </section>
 
 
   <!-- ==================================================================
-       SLIDE 9 — §4 Dataset [N].  🖼 IMAGE: one prompt × 4 surfaces side by side
+       SLIDE 8 — §4 Dataset [N].  🖼 IMAGE: one prompt × 4 surfaces side by side
        (English / Telugu / zalgo / wide-spaced) + the 51 switched-prompt rows.
        STATUS: MAKE from train.jsonl.
        ================================================================== -->
@@ -220,13 +197,12 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Augmenting WildGuardMix: translation, unicode, truncation
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
-    <div class="slide-number">9</div>
+    <div class="slide-number">8</div>
   </section>
 
 
   <!-- ==================================================================
-       SLIDE 10 — §4 Dataset [N].  📊 PLOT: dataset composition, 2 panels —
+       SLIDE 9 — §4 Dataset [N].  📊 PLOT: dataset composition, 2 panels —
        splits (1985/259/227) + augmentation counts (800/780/405),
        group-stratified by original_idx.  STATUS: data ready, plot MAKE.
        ================================================================== -->
@@ -235,13 +211,12 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Dataset composition
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
-    <div class="slide-number">10</div>
+    <div class="slide-number">9</div>
   </section>
 
 
   <!-- ==================================================================
-       SLIDE 11 — §5 Jailbreaking Qwen [N].  🖼 IMAGE: real G0DM0D3 divider
+       SLIDE 10 — §5 Jailbreaking Qwen [N].  🖼 IMAGE: real G0DM0D3 divider
        template + Qwen's compliant answer (blurred), big "38 / 300" counter.
        0/30 for WildGuardMix prompts.  STATUS: data in psiml_data/jailbreak_v1/,
        compose.
@@ -251,13 +226,12 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Jailbreaking Qwen was the real obstacle
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
-    <div class="slide-number">11</div>
+    <div class="slide-number">10</div>
   </section>
 
 
   <!-- ==================================================================
-       SLIDE 12 — §5 Jailbreaking Qwen [N].  💬 TEXT: teacher-forced activations
+       SLIDE 11 — §5 Jailbreaking Qwen [N].  💬 TEXT: teacher-forced activations
        for the probe (couldn't generate hundreds of real jailbreaks; compute
        activations as if the model had generated the text we hand it).
        ================================================================== -->
@@ -266,7 +240,32 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Teacher-forced activations for the probe
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
+    <div class="slide-number">11</div>
+  </section>
+
+
+  <!-- ==================================================================
+       SLIDE 12 — §3 Architectures [L].  MOVED here (was slide 6) — now sits
+       right after the whole dataset/jailbreak story, as a recap right before
+       Results.  Text-free by request: just the five systems, in the order we
+       actually built/ran them (regex baseline dropped — not discussed at all).
+       ================================================================== -->
+  <section class="slide slide--light">
+    <img class="logo logo--content" src="psiml-logo.png" alt="">
+    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
+      Architectures we tried
+    </h1>
+
+    <div class="at" style="--x:240; --y:140; --w:800; --h:440">
+      <div class="arch-list">
+        <div class="arch-item"><span class="arch-num">1</span>Gemma-3-1B zero-shot</div>
+        <div class="arch-item"><span class="arch-num">2</span>Gemma-3-1B + LoRA</div>
+        <div class="arch-item"><span class="arch-num">3</span>Qwen3Guard-8B</div>
+        <div class="arch-item"><span class="arch-num">4</span>Linear probe</div>
+        <div class="arch-item"><span class="arch-num">5</span>Probe &rarr; LoRA cascade</div>
+      </div>
+    </div>
+
     <div class="slide-number">12</div>
   </section>
 
@@ -279,9 +278,15 @@
   <section class="slide slide--light">
     <img class="logo logo--content" src="psiml-logo.png" alt="">
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
-      Results: six systems on the held-out test set
+      Results: five systems on the held-out test set
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
+
+    <div class="at" style="--x:140; --y:150; --w:1000; --h:520">
+      <img class="slide-img" src="main_results.png"
+           alt="F1 and harmful recall, five systems, test set"
+           style="width:100%; height:100%; object-fit:contain">
+    </div>
+
     <div class="slide-number">13</div>
   </section>
 
@@ -296,7 +301,24 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       The LoRA config is a real sweep, not one run
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
+
+    <div class="at" style="--x:67; --y:180; --w:680; --h:400">
+      <p class="lead">
+        A learning-rate &times; rank sweep, then a dropout sweep, then a 3-seed
+        stability check.
+      </p>
+      <div class="body">
+        <p>Less dropout won, consistently, across every seed we tried.</p>
+      </div>
+    </div>
+
+    <div class="at" style="--x:820; --y:220; --w:390">
+      <div class="panel panel--accent">
+        <div class="stat">0.965&nbsp;&plusmn;&nbsp;0.003</div>
+        <div class="stat-label">validation F1, mean &plusmn; std across 3 random seeds</div>
+      </div>
+    </div>
+
     <div class="slide-number">14</div>
   </section>
 
@@ -311,7 +333,25 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       We are data-limited, not architecture-limited
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
+
+    <p class="lead at" style="--x:67; --y:145; --w:1075">
+      Validation F1 vs. training-set size — still climbing at full data.
+    </p>
+
+    <div class="at" style="--x:160; --y:195; --w:700; --h:427">
+      <img class="slide-img" src="learning_curve_v2.png"
+           alt="learning curve: validation F1 vs training rows"
+           style="width:100%; height:100%; object-fit:contain">
+    </div>
+
+    <div class="at" style="--x:900; --y:300; --w:312">
+      <div class="panel panel--accent">
+        <div class="stat" style="font-size:28pt">+0.019</div>
+        <div class="stat-label">F1 gained per doubling of training rows — the
+          curve hasn't flattened yet</div>
+      </div>
+    </div>
+
     <div class="slide-number">15</div>
   </section>
 
@@ -327,7 +367,37 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       The higher-F1 probe was a prompt classifier in disguise
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
+
+    <p class="lead at" style="--x:67; --y:150; --w:1075">
+      Two probes, same layer, different pooling — validation F1 alone couldn't
+      tell them apart.
+    </p>
+
+    <div class="at" style="--x:67; --y:220; --w:480">
+      <div class="panel">
+        <div class="panel-heading">Mean over PROMPT tokens</div>
+        <div class="stat" style="font-size:30pt">0.978</div>
+        <div class="stat-label">validation F1</div>
+        <div class="stat" style="font-size:30pt; margin-top:14px">1&nbsp;/&nbsp;51</div>
+        <div class="stat-label">caught on benign-prompt + harmful-response rows</div>
+      </div>
+    </div>
+
+    <div class="at" style="--x:567; --y:220; --w:480">
+      <div class="panel panel--accent">
+        <div class="panel-heading">Mean over RESPONSE tokens</div>
+        <div class="stat" style="font-size:30pt">0.933</div>
+        <div class="stat-label">validation F1</div>
+        <div class="stat" style="font-size:30pt; margin-top:14px">51&nbsp;/&nbsp;51</div>
+        <div class="stat-label">caught on benign-prompt + harmful-response rows</div>
+      </div>
+    </div>
+
+    <p class="body at" style="--x:67; --y:565; --w:1075; font-style:italic">
+      Validation picked the wrong one — it couldn't see this without the extra
+      stress test.
+    </p>
+
     <div class="slide-number">16</div>
   </section>
 
@@ -343,7 +413,6 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       AEGIS: the inference system
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
     <div class="slide-number">17</div>
   </section>
 
@@ -359,7 +428,6 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       The ensemble price: the probe gates the classifier
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
     <div class="slide-number">18</div>
   </section>
 
@@ -375,7 +443,6 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Red teaming with a frontier coding agent
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
     <div class="slide-number">19</div>
   </section>
 
@@ -391,7 +458,6 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       The attack that worked: documentation register
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
     <div class="slide-number">20</div>
   </section>
 
@@ -406,7 +472,6 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Fine-tuning traded recall for precision
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
     <div class="slide-number">21</div>
   </section>
 
@@ -422,7 +487,6 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Unguardable at 1B: the gap is knowledge, not capacity
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
     <div class="slide-number">22</div>
   </section>
 
@@ -437,7 +501,6 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Three takeaways
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
     <div class="slide-number">23</div>
   </section>
 
@@ -452,7 +515,6 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Caveats and where we'd go next
     </h1>
-    <div class="footer footer--content">PSIML 11 &middot; Kastel Ečka &middot; 5–16 August 2026</div>
     <div class="slide-number">24</div>
   </section>
 

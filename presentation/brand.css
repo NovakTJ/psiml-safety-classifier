@@ -240,6 +240,47 @@ html, body {
 .stat        { font: 700 40pt/1 var(--psiml-head); color: var(--psiml-primary); }
 .stat-label  { margin-top: 6px; font-size: 12pt; color: var(--psiml-muted); }
 
+/* --- Added for slides 6/13-16 (Lazar's §3/§6 sections) -------------------
+   Reuses the existing --psiml-* tokens only; no new colors introduced. */
+
+.arch-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.arch-item {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: var(--psiml-panel);
+  border-radius: 12px;
+  padding: 18px 28px;
+  font: 700 20pt/1.2 var(--psiml-head);
+  color: var(--psiml-ink);
+}
+.arch-num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--psiml-primary);
+  color: #fff;
+  font: 700 16pt var(--psiml-text);
+}
+
+.slide-img {
+  display: block;
+}
+
+.panel-heading {
+  font: 700 15pt/1.2 var(--psiml-head);
+  color: var(--psiml-ink);
+  margin-bottom: 10px;
+}
+
 /* --- Print / PDF export --------------------------------------------------
    Chrome: Ctrl+P, landscape, margins none, background graphics on. */
 @page { size: 1280px 720px; margin: 0; }
