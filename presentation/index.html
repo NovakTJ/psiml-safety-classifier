@@ -81,15 +81,26 @@
 
 
   <!-- ==================================================================
-       SLIDE 4 — §1 Why [N].  💬 TEXT: production classifiers (Fable 5 / GPT-5.6
-       flagging + rerouting) and our goal — replicate Anthropic's Constitutional
-       Classifiers, understand attack types.
+       SLIDE 4 — §1 Why [N].  💬 The goal statement.  The space above the goal
+       line (roughly y 150–480) is deliberately EMPTY — Novak is adding his own
+       scale-of-the-problem content there.  Stat cards were tried here and
+       dropped 2026-08-15: the public numbers mix deployments (the 5.5%/0.05%
+       figures are the Constitutional Classifiers++ SHADOW deployment on Sonnet
+       4.5, Dec 2025–Jan 2026 — not live Fable 5 behaviour), and "every prompt
+       is screened" overstates coverage, since the heavy CBRN/jailbreak stacks
+       are gated to high-capability models rather than all traffic.
        ================================================================== -->
   <section class="slide slide--light">
     <img class="logo logo--content" src="psiml-logo.png" alt="">
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Safety classifiers in production — and our goal
     </h1>
+
+    <div class="at body" style="--x:67; --y:520; --w:1146; --h:120">
+      <p><strong>Our goal:</strong> replicate the production stack a probe on the guarded model's activations plus a small finetuned
+      guard &mdash; and try to find what gets through.</p>
+    </div>
+
     <div class="slide-number">3</div>
   </section>
 
