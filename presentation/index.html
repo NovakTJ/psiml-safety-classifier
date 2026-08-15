@@ -60,30 +60,23 @@
 
 
   <!-- ==================================================================
-       SLIDE 2 — §1 Why [N].  🖼 IMAGE: frontier chat UI producing something
-       dangerous (malware / mass spam).  STATUS: MAKE (screenshot).
-       Held across the first two script paragraphs.
+       SLIDE 2 — §1 Why [N].  🧩 DIAGRAM: jailbreak_roleplay_wrapper_two_panel_v2.svg
+       — the basic problem: a roleplay wrapper jailbreak gets a frontier model
+       to comply.  One slide, one idea.
        ================================================================== -->
   <section class="slide slide--light">
     <img class="logo logo--content" src="psiml-logo.png" alt="">
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
-      LLMs are getting capable — and risky
+      The basic problem
     </h1>
+
+    <div class="at" style="--x:67; --y:150; --w:680; --h:480">
+      <img class="slide-img" src="jailbreak_roleplay_wrapper_two_panel_v2.svg"
+           alt="a roleplay-wrapper jailbreak: benign framing on the left, the same prompt wrapped as a roleplay getting compliance on the right"
+           style="width:100%; height:100%; object-fit:contain">
+    </div>
+
     <div class="slide-number">2</div>
-  </section>
-
-
-  <!-- ==================================================================
-       SLIDE 3 — §1 Why [N].  🖼 IMAGE: simple-example.png (steal-a-car refusal
-       vs roleplay compliance) — "the whole talk in one picture", 5 s of silence.
-       STATUS: ✅ in repo.
-       ================================================================== -->
-  <section class="slide slide--light">
-    <img class="logo logo--content" src="psiml-logo.png" alt="">
-    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
-      Every frontier model has been jailbroken
-    </h1>
-    <div class="slide-number">3</div>
   </section>
 
 
@@ -97,95 +90,8 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Safety classifiers in production — and our goal
     </h1>
-    <div class="slide-number">4</div>
+    <div class="slide-number">3</div>
   </section>
-
-
-  <!-- ==================================================================
-       SLIDE 5 — §2 The problem is adversarial [?].  🧩 DIAGRAM: two-sided scale
-       (miss a jailbreak → harm  vs  flag a benign request → angry paying user).
-       Caption: "in production you need ~100% recall AND near-zero FPR".
-       STATUS: MAKE (draw).  Cut first if over time (drop §2 entirely).
-       ================================================================== -->
-  <section class="slide slide--light">
-    <img class="logo logo--content" src="psiml-logo.png" alt="">
-    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
-      The problem is adversarial
-    </h1>
-    <div class="slide-number">5</div>
-  </section>
-
-
-  <!-- ==================================================================
-       SLIDE 6 — §3/§4 Exchange classifier [?].  Content already filled.
-       Geometry ported 1:1 from slideLayout4 (PSIML_CONTENT).
-       ================================================================== -->
-  <section class="slide slide--light">
-
-    <img class="logo logo--content" src="psiml-logo.png" alt="">
-
-    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
-      Why classify the exchange, not the prompt
-    </h1>
-
-    <div class="at" style="--x:67; --y:158; --w:660; --h:470">
-      <p class="lead">
-        A prompt-only classifier can be walked around. The decision has to see
-        what the model is actually saying.
-      </p>
-      <div class="body">
-        <p>
-          Prompt and response are scored as <strong>one text, one label</strong>.
-          A benign-looking prompt that produces a harmful continuation is
-          <strong>HARMFUL</strong> — which a prompt classifier cannot express.
-        </p>
-        <p>
-          This is what lets the guard stop generation <strong>mid-stream</strong>,
-          before the harmful tokens ever reach the user.
-        </p>
-      </div>
-      <div class="panel panel--accent" style="margin-top:24px">
-        <p class="body" style="font-size:15pt">
-          In WildGuardMix the harm label matched the prompt label on
-          <strong>every row</strong> — so response-side detection had zero
-          supervised gradient. We had to build those examples ourselves.
-        </p>
-      </div>
-    </div>
-
-    <div class="at" style="--x:790; --y:180; --w:352">
-      <div class="panel">
-        <div class="stat">0 / 30</div>
-        <div class="stat-label">WildGuardMix adversarial prompts that jailbroke Qwen3.5-9B</div>
-      </div>
-      <div class="panel" style="margin-top:18px">
-        <div class="stat">38</div>
-        <div class="stat-label">successful jailbreaks, from divider-style templates</div>
-      </div>
-      <div class="panel" style="margin-top:18px">
-        <div class="stat">1B</div>
-        <div class="stat-label">parameters in the guard — small enough to run on a laptop</div>
-      </div>
-    </div>
-
-    <div class="slide-number">6</div>
-  </section>
-
-
-  <!-- ==================================================================
-       SLIDE 7 — §4 Dataset [N].  🧩 DIAGRAM: OR-rule truth table, 6 rows,
-       row 4 (benign prompt + harmful response) highlighted red.
-       Answers "harmful label — ko će da objasni?" (currently N's — confirm).
-       STATUS: MAKE (draw).
-       ================================================================== -->
-  <section class="slide slide--light">
-    <img class="logo logo--content" src="psiml-logo.png" alt="">
-    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
-      The label rule: harmful = prompt OR response
-    </h1>
-    <div class="slide-number">7</div>
-  </section>
-
 
   <!-- ==================================================================
        SLIDE 8 — §4 Dataset [N].  🧩 DIAGRAM: dataset_augmentation.svg —
@@ -206,30 +112,17 @@
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
-    <div class="slide-number">8</div>
+    <div class="slide-number">4</div>
   </section>
 
 
   <!-- ==================================================================
-       SLIDE 9 — §4 Dataset [N].  📊 PLOT: dataset composition, 2 panels —
-       splits (1985/259/227) + augmentation counts (800/780/405),
-       group-stratified by original_idx.  STATUS: data ready, plot MAKE.
-       ================================================================== -->
-  <section class="slide slide--light">
-    <img class="logo logo--content" src="psiml-logo.png" alt="">
-    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
-      Dataset composition
-    </h1>
-    <div class="slide-number">9</div>
-  </section>
-
-
-  <!-- ==================================================================
-       SLIDE 10 — §5 Jailbreaking Qwen [N].  🧩 DIAGRAM: divider_jailbreak_qwen_label_outside.svg
-       — the divider-template jailbreak pattern (injected instruction forces
-       one reply with a refusal, an exact divider string, then the harmful
-       answer).  WildGuardMix adversarial prompts scored 0 / 30; the divider
-       templates that did break Qwen succeeded only ~10% of the time.
+       SLIDE 10 — §5 Jailbreaking Qwen [N].  💬 STATS-ONLY.  WildGuardMix
+       adversarial prompts scored 0 / 30; the divider templates that did break
+       Qwen succeeded only ~10% of the time.
+       The divider diagram moved to the next slide 2026-08-15 and no art
+       replaces it — the two stat cards now run side by side across the full
+       content width (same flex-row treatment as slide 13), vertically centred.
        ================================================================== -->
   <section class="slide slide--light">
     <img class="logo logo--content" src="psiml-logo.png" alt="">
@@ -237,25 +130,45 @@
       Jailbreaking Qwen was the real obstacle
     </h1>
 
-    <div class="at" style="--x:67; --y:150; --w:680; --h:480">
+    <div class="at" style="--x:67; --y:220; --w:1146; --h:360; display:flex; gap:24px">
+
+      <div class="panel panel--accent" style="flex:1; display:flex; flex-direction:column; justify-content:center">
+        <div class="stat">38&nbsp;/&nbsp;300</div>
+        <div class="stat-label">divider-template jailbreaks that succeeded &mdash;
+          ~13%, inconsistent, not reliable</div>
+      </div>
+
+      <div class="panel" style="flex:1; display:flex; flex-direction:column; justify-content:center">
+        <div class="stat">0&nbsp;/&nbsp;30</div>
+        <div class="stat-label">WildGuardMix adversarial prompts that jailbroke it</div>
+      </div>
+
+    </div>
+
+    <div class="slide-number">5</div>
+  </section>
+
+
+  <!-- ==================================================================
+       SLIDE — §5 Jailbreaking Qwen [N].  🧩 DIAGRAM: divider_jailbreak_qwen_label_outside.svg
+       — the divider-template jailbreak pattern (injected instruction forces
+       one reply with a refusal, an exact divider string, then the harmful
+       answer).  Moved here from the previous slide 2026-08-15 so it gets a
+       beat of its own; the previous slide keeps the stats and gets new art.
+       ================================================================== -->
+  <section class="slide slide--light">
+    <img class="logo logo--content" src="psiml-logo.png" alt="">
+    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
+      Modern jailbreak example
+    </h1>
+
+    <div class="at" style="--x:155; --y:130; --w:970; --h:575">
       <img class="slide-img" src="divider_jailbreak_qwen_label_outside.svg"
            alt="divider-template jailbreak pattern: one reply holds a refusal, a divider string, then the harmful answer"
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
-    <div class="at" style="--x:790; --y:180; --w:352">
-      <div class="panel panel--accent">
-        <div class="stat">38&nbsp;/&nbsp;300</div>
-        <div class="stat-label">divider-template jailbreaks that succeeded —
-          ~13%, inconsistent, not reliable</div>
-      </div>
-      <div class="panel" style="margin-top:18px">
-        <div class="stat">0&nbsp;/&nbsp;30</div>
-        <div class="stat-label">WildGuardMix adversarial prompts that jailbroke it</div>
-      </div>
-    </div>
-
-    <div class="slide-number">10</div>
+    <div class="slide-number">6</div>
   </section>
 
 
@@ -269,7 +182,7 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Teacher-forced activations for the probe
     </h1>
-    <div class="slide-number">11</div>
+    <div class="slide-number">7</div>
   </section>
 
 
@@ -295,7 +208,7 @@
       </div>
     </div>
 
-    <div class="slide-number">12</div>
+    <div class="slide-number">8</div>
   </section>
 
 
@@ -316,7 +229,7 @@
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
-    <div class="slide-number">13</div>
+    <div class="slide-number">9</div>
   </section>
 
 
@@ -337,7 +250,7 @@
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
-    <div class="slide-number">14</div>
+    <div class="slide-number">10</div>
   </section>
 
 
@@ -352,7 +265,7 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       AEGIS: the inference system
     </h1>
-    <div class="slide-number">15</div>
+    <div class="slide-number">11</div>
   </section>
 
 
@@ -367,7 +280,7 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       The ensemble price: the probe gates the classifier
     </h1>
-    <div class="slide-number">16</div>
+    <div class="slide-number">12</div>
   </section>
 
 
@@ -437,7 +350,7 @@
       </span>
     </div>
 
-    <div class="slide-number">17</div>
+    <div class="slide-number">13</div>
   </section>
 
 
@@ -462,7 +375,7 @@
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
-    <div class="slide-number">18</div>
+    <div class="slide-number">14</div>
   </section>
 
 
@@ -487,7 +400,7 @@
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
-    <div class="slide-number">19</div>
+    <div class="slide-number">15</div>
   </section>
 
 
@@ -522,7 +435,7 @@
       </ul>
     </div>
 
-    <div class="slide-number">20</div>
+    <div class="slide-number">16</div>
   </section>
 
 
@@ -537,7 +450,7 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Q&amp;A
     </h1>
-    <div class="slide-number">21</div>
+    <div class="slide-number">17</div>
   </section>
 
 </div>
