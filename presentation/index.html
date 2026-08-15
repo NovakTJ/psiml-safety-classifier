@@ -260,9 +260,8 @@
       <div class="arch-list">
         <div class="arch-item"><span class="arch-num">1</span>Gemma-3-1B zero-shot</div>
         <div class="arch-item"><span class="arch-num">2</span>Gemma-3-1B + LoRA</div>
-        <div class="arch-item"><span class="arch-num">3</span>Qwen3Guard-8B</div>
-        <div class="arch-item"><span class="arch-num">4</span>Linear probe</div>
-        <div class="arch-item"><span class="arch-num">5</span>Probe &rarr; LoRA cascade</div>
+        <div class="arch-item"><span class="arch-num">3</span>Linear probe</div>
+        <div class="arch-item"><span class="arch-num">4</span>Ensemble &mdash; probe + LoRA</div>
       </div>
     </div>
 
@@ -281,7 +280,7 @@
       Results: five systems on the held-out test set
     </h1>
 
-    <div class="at" style="--x:140; --y:150; --w:1000; --h:520">
+    <div class="at" style="--x:155; --y:130; --w:970; --h:575">
       <img class="slide-img" src="main_results.png"
            alt="F1 and harmful recall, five systems, test set"
            style="width:100%; height:100%; object-fit:contain">
@@ -292,39 +291,7 @@
 
 
   <!-- ==================================================================
-       SLIDE 14 — §6 Results [L].  📊 PLOT: LoRA sweep summary (lr × rank ×
-       dropout, or per-epoch val-F1 of the winning run) + 3-seed check
-       0.9654 ± 0.0032.  OPTIONAL — cut first if over time.
-       ================================================================== -->
-  <section class="slide slide--light">
-    <img class="logo logo--content" src="psiml-logo.png" alt="">
-    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
-      The LoRA config is a real sweep, not one run
-    </h1>
-
-    <div class="at" style="--x:67; --y:180; --w:680; --h:400">
-      <p class="lead">
-        A learning-rate &times; rank sweep, then a dropout sweep, then a 3-seed
-        stability check.
-      </p>
-      <div class="body">
-        <p>Less dropout won, consistently, across every seed we tried.</p>
-      </div>
-    </div>
-
-    <div class="at" style="--x:820; --y:220; --w:390">
-      <div class="panel panel--accent">
-        <div class="stat">0.965&nbsp;&plusmn;&nbsp;0.003</div>
-        <div class="stat-label">validation F1, mean &plusmn; std across 3 random seeds</div>
-      </div>
-    </div>
-
-    <div class="slide-number">14</div>
-  </section>
-
-
-  <!-- ==================================================================
-       SLIDE 15 — §6 Results [L].  📊 PLOT: learning curve, val F1 vs train rows
+       SLIDE 14 — §6 Results [L].  📊 PLOT: learning curve, val F1 vs train rows
        (log₂), +0.019 F1 per doubling, still rising at full data.
        STATUS: data ready, plot MAKE.
        ================================================================== -->
@@ -352,7 +319,7 @@
       </div>
     </div>
 
-    <div class="slide-number">15</div>
+    <div class="slide-number">14</div>
   </section>
 
 
@@ -398,7 +365,7 @@
       stress test.
     </p>
 
-    <div class="slide-number">16</div>
+    <div class="slide-number">15</div>
   </section>
 
 
@@ -413,7 +380,7 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       AEGIS: the inference system
     </h1>
-    <div class="slide-number">17</div>
+    <div class="slide-number">16</div>
   </section>
 
 
@@ -428,7 +395,7 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       The ensemble price: the probe gates the classifier
     </h1>
-    <div class="slide-number">18</div>
+    <div class="slide-number">17</div>
   </section>
 
 
@@ -443,7 +410,7 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Red teaming with a frontier coding agent
     </h1>
-    <div class="slide-number">19</div>
+    <div class="slide-number">18</div>
   </section>
 
 
@@ -458,7 +425,7 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       The attack that worked: documentation register
     </h1>
-    <div class="slide-number">20</div>
+    <div class="slide-number">19</div>
   </section>
 
 
@@ -472,7 +439,7 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Fine-tuning traded recall for precision
     </h1>
-    <div class="slide-number">21</div>
+    <div class="slide-number">20</div>
   </section>
 
 
@@ -487,7 +454,7 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Unguardable at 1B: the gap is knowledge, not capacity
     </h1>
-    <div class="slide-number">22</div>
+    <div class="slide-number">21</div>
   </section>
 
 
@@ -501,7 +468,7 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Three takeaways
     </h1>
-    <div class="slide-number">23</div>
+    <div class="slide-number">22</div>
   </section>
 
 
@@ -515,7 +482,7 @@
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Caveats and where we'd go next
     </h1>
-    <div class="slide-number">24</div>
+    <div class="slide-number">23</div>
   </section>
 
 </div>
