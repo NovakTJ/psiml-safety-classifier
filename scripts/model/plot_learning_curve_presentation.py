@@ -79,7 +79,7 @@ def main():
     ax.set_xticks(ticks)
     ax.get_xaxis().set_major_formatter(plt.ScalarFormatter())
     ax.set_xlabel("training rows")
-    ax.set_ylabel("validation F1")
+    ax.set_ylabel("validation F1 harmful")
     ax.set_title("Learning curve — validation F1")
     ax.grid(True, which="both", alpha=0.3)
     ax.legend(loc="lower right", fontsize=9)
