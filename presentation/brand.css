@@ -275,6 +275,35 @@ html, body {
   display: block;
 }
 
+/* Plain bullet list — slide 17 (red teaming intro). Deliberately NOT the
+   arch-list treatment (no boxes/numbered circles): bold serif lines with a
+   short teal accent bar, echoing .panel--accent's left-border motif used
+   elsewhere in the deck rather than inventing a new visual language. */
+.plain-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+.plain-list li {
+  position: relative;
+  padding-left: 34px;
+  font: 700 25pt/1.35 var(--psiml-head);
+  color: var(--psiml-ink);
+}
+.plain-list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.2em;
+  width: 5px;
+  height: 1em;
+  border-radius: 3px;
+  background: var(--psiml-primary);
+}
+
 .panel-heading {
   font: 700 15pt/1.2 var(--psiml-head);
   color: var(--psiml-ink);
