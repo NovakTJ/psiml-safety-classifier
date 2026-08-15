@@ -91,7 +91,7 @@ closing detail to say out loud)
 
 ---
 
-## Slide 18 — "The attacks that worked" (§8, ~45s)
+## Slide 18 — "Example of an attack that worked" (§8, ~45s)
 
 **Superseded 2026-08-15** — the plain-bullet version below was replaced by merging
 in Novak's `two_stage_classifier_bypass.svg` diagram instead (conflict resolved in
