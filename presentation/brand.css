@@ -304,6 +304,23 @@ html, body {
   background: var(--psiml-primary);
 }
 
+/* Orange variant — slide 20 "what's next" half, to read as a distinct group
+   from the teal "takeaways" half above it. */
+.plain-list--next li::before {
+  background: var(--psiml-orange);
+}
+
+/* Small eyebrow label above each plain-list group (slide 20). */
+.group-label {
+  margin: 0 0 14px;
+  font: 700 14pt/1 var(--psiml-text);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--psiml-muted);
+}
+.group-label--accent  { color: var(--psiml-primary); }
+.group-label--accent2 { color: var(--psiml-orange); }
+
 .panel-heading {
   font: 700 15pt/1.2 var(--psiml-head);
   color: var(--psiml-ink);

@@ -464,7 +464,7 @@
       We are data-limited, not architecture-limited
     </h1>
 
-    <div class="at" style="--x:155; --y:130; --w:970; --h:575">
+    <div class="at" style="--x:67; --y:140; --w:1146; --h:560">
       <img class="slide-img" src="learning_curve_v2.png"
            alt="learning curve: validation F1 vs training rows"
            style="width:100%; height:100%; object-fit:contain">
@@ -505,12 +505,11 @@
 
 
   <!-- ==================================================================
-       SLIDE 19 — §8 Red teaming [L].  Affordances given to the red-teamer,
-       grouped into the four stacks named in the bottom banner:
-       Kimi K3 (the brain) · pi harness (the hands) · custom AGENTS.md
-       (the rules) · human hints (the nudges). Replaces the earlier
-       three-bullet plain-list version. Four equal .panel--accent cards,
-       content vertically centred; teal serif banner carries the stack line.
+       SLIDE 19 — §8 Red teaming [L].  Simplified 2026-08-16: Novak's dense
+       four-panel version (each with 3-4 sub-bullets) replaced with four
+       plain lines, same .plain-list treatment as the rest of Lazar's
+       section -- all the affordance detail now lives in the spoken pitch
+       instead of on-screen.
        ================================================================== -->
   <section class="slide slide--light">
     <img class="logo logo--content" src="psiml-logo.png" alt="">
@@ -518,56 +517,13 @@
       Red teaming with a frontier coding agent
     </h1>
 
-    <p class="at lead" style="--x:67; --y:140; --w:1146; --h:40; margin:0">
-      What we handed the red-teamer &mdash; and what the agent harness already gave it.
-    </p>
-
-    <div class="at" style="--x:67; --y:185; --w:1146; --h:430; display:flex; gap:24px">
-
-      <div class="panel panel--accent" style="flex:1; display:flex; flex-direction:column; justify-content:center; gap:12px">
-        <div class="panel-heading">Kimi K3 &mdash; the brain</div>
-        <ul style="margin:0; padding-left:18px; font:13pt/1.45 var(--psiml-text); color:var(--psiml-body)">
-          <li>Open-weight frontier coding agent</li>
-          <li>General jailbreak knowledge from pretraining</li>
-          <li>Reads the Constitutional Classifiers++ paper we attached</li>
-        </ul>
-      </div>
-
-      <div class="panel panel--accent" style="flex:1; display:flex; flex-direction:column; justify-content:center; gap:12px">
-        <div class="panel-heading">Pi harness &mdash; the hands</div>
-        <ul style="margin:0; padding-left:18px; font:13pt/1.45 var(--psiml-text); color:var(--psiml-body)">
-          <li><code>bash</code>, <code>read</code>, <code>write</code>, <code>edit</code> tools</li>
-          <li>Autonomous plan &rarr; act &rarr; observe loop</li>
-          <li>Multi-step, multi-hour runs in one session</li>
-          <li>Auto-loads project context (<code>AGENTS.md</code>)</li>
-        </ul>
-      </div>
-
-      <div class="panel panel--accent" style="flex:1; display:flex; flex-direction:column; justify-content:center; gap:12px">
-        <div class="panel-heading">Custom AGENTS.md &mdash; the rules</div>
-        <ul style="margin:0; padding-left:18px; font:13pt/1.45 var(--psiml-text); color:var(--psiml-body)">
-          <li>Black-box: only <code>cli.py --help</code> + session logs readable; no <code>ls</code> of the repo</li>
-          <li>Exact launch commands given</li>
-          <li>May probe weaker models (gpt-3.5-turbo) to learn the guard</li>
-          <li>&ldquo;Do not be weak intentionally&rdquo;</li>
-        </ul>
-      </div>
-
-      <div class="panel panel--accent" style="flex:1; display:flex; flex-direction:column; justify-content:center; gap:12px">
-        <div class="panel-heading">Human hints &mdash; the nudges</div>
-        <ul style="margin:0; padding-left:18px; font:13pt/1.45 var(--psiml-text); color:var(--psiml-body)">
-          <li>Operator steering dropped in mid-run</li>
-          <li>Redirects after dead ends (base64, codenames)</li>
-          <li>Steered toward the LoRA-vs-zero-shot ablation</li>
-        </ul>
-      </div>
-
-    </div>
-
-    <div class="at" style="--x:90; --y:628; --w:1100; --h:40; display:flex; align-items:center; justify-content:center">
-      <span style="font:700 19pt/1 var(--psiml-head); color:var(--psiml-primary); letter-spacing:.01em">
-        kimi-k3&nbsp;&nbsp;+&nbsp;&nbsp;pi harness&nbsp;&nbsp;+&nbsp;&nbsp;custom AGENTS.md&nbsp;&nbsp;+&nbsp;&nbsp;human hints
-      </span>
+    <div class="at" style="--x:130; --y:180; --w:1020; --h:440">
+      <ul class="plain-list">
+        <li>Kimi K3 &mdash; the brain</li>
+        <li>Pi harness &mdash; the hands</li>
+        <li>Custom AGENTS.md &mdash; the rules</li>
+        <li>Human hints &mdash; the nudges</li>
+      </ul>
     </div>
 
     <div class="slide-number">17</div>
@@ -641,15 +597,17 @@
       Takeaways and what's next
     </h1>
 
-    <div class="at" style="--x:130; --y:170; --w:1020; --h:180">
+    <div class="at" style="--x:130; --y:155; --w:1020; --h:210">
+      <p class="group-label group-label--accent">Takeaways</p>
       <ul class="plain-list">
         <li>Successfully reproduced Anthropic's Constitutional Classifiers++ architecture &mdash; at student scale</li>
         <li>Matched SOTA recall at a lower compute cost</li>
       </ul>
     </div>
 
-    <div class="at" style="--x:130; --y:400; --w:1020; --h:180">
-      <ul class="plain-list">
+    <div class="at" style="--x:130; --y:430; --w:1020; --h:210">
+      <p class="group-label group-label--accent2">What's next</p>
+      <ul class="plain-list plain-list--next">
         <li>Grow the dataset &mdash; with alias and framing examples</li>
         <li>Train on conversations, not just single exchanges</li>
       </ul>
