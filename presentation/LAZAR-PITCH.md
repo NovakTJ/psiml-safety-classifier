@@ -57,7 +57,9 @@ so treat this as the floor, not the target.
 > we double the training set**. We didn't run out of signal to learn from; we ran out
 > of data.
 
-**~30 words, ~12s.**
+**~30 words, ~12s.** Note: the chart's x-axis just says "training rows" now (no
+"log2 scale" label) — the pitch text above already covers it verbally ("every time
+we double the training set"), so nothing extra needed, but don't drop that line.
 
 ---
 
