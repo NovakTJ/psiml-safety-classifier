@@ -310,6 +310,16 @@ html, body {
   margin-bottom: 10px;
 }
 
+/* Inline code — used on slide 17 affordances (cli.py --help, AGENTS.md, etc.).
+   Monospace, sized down to sit inside 13pt body copy. */
+code {
+  font: 12pt/1.3 "DejaVu Sans Mono", "Consolas", monospace;
+  background: rgba(20, 107, 147, .10);
+  padding: 0 .25em;
+  border-radius: 3px;
+  color: var(--psiml-ink);
+}
+
 /* --- Print / PDF export --------------------------------------------------
    Chrome: Ctrl+P, landscape, margins none, background graphics on. */
 @page { size: 1280px 720px; margin: 0; }
