@@ -401,7 +401,7 @@
       The attacks that worked
     </h1>
 
-    <div class="at" style="--x:67; --y:170; --w:1075; --h:426">
+    <div class="at" style="--x:110; --y:130; --w:1060; --h:575">
       <img class="slide-img" src="two_stage_classifier_bypass.svg"
            alt="plainly worded request blocked at the input classifier; the same request as a technical description passes input classifier, chat model, and output classifier"
            style="width:100%; height:100%; object-fit:contain">
@@ -432,15 +432,31 @@
        gap is knowledge, not capacity.
        ================================================================== -->
   <!-- ==================================================================
-       SLIDE 23 — §9 Close [?].  💬 TEXT-ONLY.  Renamed 2026-08-15: now folds
-       in the former "where we'd go next" material (old slide 24) instead of
-       a separate caveats slide — bullets TBD, still under discussion.
+       SLIDE 23 — §9 Close [L].  💬 TEXT-ONLY.  Two takeaways added
+       2026-08-15, same plain-list treatment as slides 17/18 (no extra
+       emphasis by design). "What's next" bullets still TBD — leave room
+       below for a second group once decided.
        ================================================================== -->
   <section class="slide slide--light">
     <img class="logo logo--content" src="psiml-logo.png" alt="">
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Takeaways and what's next
     </h1>
+
+    <div class="at" style="--x:130; --y:170; --w:1020; --h:180">
+      <ul class="plain-list">
+        <li>Successfully reproduced Anthropic's Constitutional Classifiers++ architecture &mdash; at student scale</li>
+        <li>Matches SOTA recall at a fraction of the compute cost</li>
+      </ul>
+    </div>
+
+    <div class="at" style="--x:130; --y:400; --w:1020; --h:180">
+      <ul class="plain-list">
+        <li>Grow the dataset &mdash; with alias and framing examples</li>
+        <li>Train on conversations, not just single exchanges</li>
+      </ul>
+    </div>
+
     <div class="slide-number">20</div>
   </section>
 
