@@ -96,6 +96,12 @@
       Safety classifiers in production — and our goal
     </h1>
 
+    <div class="at" style="--x:67; --y:150; --w:1146; --h:360">
+      <img class="slide-img" src="chat_and_classifier_two_boxes.svg"
+           alt="two boxes side by side, chat model and classifier model; the classifier is able to stop the conversation mid-stream"
+           style="width:100%; height:100%; object-fit:contain">
+    </div>
+
     <div class="at body" style="--x:67; --y:520; --w:1146; --h:120">
       <p><strong>Our goal:</strong> replicate the production stack a probe on the guarded model's activations plus a small finetuned
       guard &mdash; and try to find what gets through.</p>
@@ -115,18 +121,12 @@
   <section class="slide slide--light">
     <img class="logo logo--content" src="psiml-logo.png" alt="">
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
-      Augmenting WildGuardMix — four ways
+      WildGuardMix, 2024
     </h1>
 
-    <div class="at" style="--x:67; --y:150; --w:1146; --h:200">
-      <img class="slide-img" src="dataset_augmentation.svg"
-           alt="WildGuardMix flows rightwards through four augmentations — translation, unicode transform, truncation, and prompt switching"
-           style="width:100%; height:100%; object-fit:contain; object-position:top">
-    </div>
+    <div class="at" style="--x:67; --y:190; --w:1146; --h:400; display:flex; gap:32px; align-items:stretch">
 
-    <div class="at" style="--x:67; --y:400; --w:1146; --h:230; display:flex; gap:24px; align-items:stretch">
-
-      <div class="panel panel--accent" style="flex:0 0 330px; display:flex; flex-direction:column; justify-content:center">
+      <div class="panel panel--accent" style="flex:0 0 400px; display:flex; flex-direction:column; justify-content:center">
         <div class="stat">0&nbsp;/&nbsp;30</div>
         <div class="stat-label">WildGuardMix adversarial prompts that jailbroke Qwen3.5-9B</div>
       </div>
@@ -135,7 +135,7 @@
         <p class="body" style="margin:0">The 2024 source data is <strong>English-only, plain-text, and complete-response</strong>
         &mdash; and its adversarial prompts no longer break a 2026 model. Training on it alone
         teaches the guard exactly one attack surface.</p>
-        <p class="body" style="margin:14px 0 0">Each augmentation below adds a surface the raw data never covers.
+        <p class="body" style="margin:18px 0 0">So we augment it four ways &mdash; each adding a surface the raw data never covers.
         Splits stay group-stratified by <code>original_idx</code> &mdash; no exchange appears in two splits.</p>
       </div>
 
