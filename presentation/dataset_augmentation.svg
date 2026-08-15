@@ -1,0 +1,120 @@
+<svg width="100%" viewBox="0 0 1100 320" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>Dataset augmentation pipeline</title>
+  <desc>WildGuardMix flows rightwards through four augmentations — translation, unicode transform, truncation, and prompt switching — each with the reason it was applied written underneath.</desc>
+
+  <defs>
+    <marker id="aug-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="#146B93" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <style>
+    .tag    { font: 600 10.5px var(--psiml-text, Carlito, Calibri, "Segoe UI", sans-serif); fill: #5A7484; letter-spacing: 1.6px; }
+    .name   { font: 700 17px var(--psiml-head, Cambria, Caladea, Georgia, serif); fill: #0C2233; }
+    .sub    { font: 400 11.5px var(--psiml-text, Carlito, Calibri, "Segoe UI", sans-serif); fill: #5A7484; }
+    .reason { font: 400 12.5px var(--psiml-text, Carlito, Calibri, "Segoe UI", sans-serif); fill: #855201; }
+  </style>
+
+  <!-- ===================== TOP TAGS ===================== -->
+  <text class="tag" x="100"  y="22" text-anchor="middle">SOURCE</text>
+  <text class="tag" x="320"  y="22" text-anchor="middle">AUGMENTATION 1</text>
+  <text class="tag" x="540"  y="22" text-anchor="middle">AUGMENTATION 2</text>
+  <text class="tag" x="760"  y="22" text-anchor="middle">AUGMENTATION 3</text>
+  <text class="tag" x="980"  y="22" text-anchor="middle">AUGMENTATION 4</text>
+
+  <!-- ===================== NODE ROW ===================== -->
+  <!-- 1 · source: WildGuardMix -->
+  <g>
+    <rect x="10" y="38" width="180" height="64" rx="10" fill="#E3EEF1" stroke="#146B93" stroke-width="1"/>
+    <text class="name" x="100" y="68" text-anchor="middle" dominant-baseline="central">WildGuardMix</text>
+    <text class="sub"  x="100" y="90" text-anchor="middle" dominant-baseline="central">2024 · English only</text>
+  </g>
+
+  <!-- 2 · Translation -->
+  <g>
+    <rect x="230" y="38" width="180" height="64" rx="10" fill="#95E1D9" stroke="#146B93" stroke-width="1"/>
+    <text class="name" x="320" y="72" text-anchor="middle" dominant-baseline="central">Translation</text>
+  </g>
+
+  <!-- 3 · Unicode transform -->
+  <g>
+    <rect x="450" y="38" width="180" height="64" rx="10" fill="#95E1D9" stroke="#146B93" stroke-width="1"/>
+    <text class="name" x="540" y="64" text-anchor="middle" dominant-baseline="central">Unicode</text>
+    <text class="name" x="540" y="84" text-anchor="middle" dominant-baseline="central">transform</text>
+  </g>
+
+  <!-- 4 · Truncation -->
+  <g>
+    <rect x="670" y="38" width="180" height="64" rx="10" fill="#95E1D9" stroke="#146B93" stroke-width="1"/>
+    <text class="name" x="760" y="72" text-anchor="middle" dominant-baseline="central">Truncation</text>
+  </g>
+
+  <!-- 5 · Prompt switching -->
+  <g>
+    <rect x="890" y="38" width="180" height="64" rx="10" fill="#95E1D9" stroke="#146B93" stroke-width="1"/>
+    <text class="name" x="980" y="64" text-anchor="middle" dominant-baseline="central">Prompt</text>
+    <text class="name" x="980" y="84" text-anchor="middle" dominant-baseline="central">switching</text>
+  </g>
+
+  <!-- ===================== ARROWS ===================== -->
+  <line x1="192" y1="70" x2="228" y2="70" stroke="#146B93" stroke-width="2" marker-end="url(#aug-arrow)"/>
+  <line x1="412" y1="70" x2="448" y2="70" stroke="#146B93" stroke-width="2" marker-end="url(#aug-arrow)"/>
+  <line x1="632" y1="70" x2="668" y2="70" stroke="#146B93" stroke-width="2" marker-end="url(#aug-arrow)"/>
+  <line x1="852" y1="70" x2="888" y2="70" stroke="#146B93" stroke-width="2" marker-end="url(#aug-arrow)"/>
+
+  <!-- ===================== CONNECTORS TO REASONS ===================== -->
+  <line x1="320" y1="102" x2="320" y2="146" stroke="#5A7484" stroke-width="0.8" stroke-dasharray="4 3"/>
+  <line x1="540" y1="102" x2="540" y2="146" stroke="#5A7484" stroke-width="0.8" stroke-dasharray="4 3"/>
+  <line x1="760" y1="102" x2="760" y2="146" stroke="#5A7484" stroke-width="0.8" stroke-dasharray="4 3"/>
+  <line x1="980" y1="102" x2="980" y2="146" stroke="#5A7484" stroke-width="0.8" stroke-dasharray="4 3"/>
+
+  <!-- ===================== REASON BOXES ===================== -->
+  <!-- reason 1 · Translation -->
+  <g>
+    <rect x="230" y="146" width="180" height="120" rx="8" fill="#FBF1E0" stroke="#E8A33D" stroke-width="0.6"/>
+    <text class="reason" x="244" y="168">
+      <tspan x="244" dy="0">Non-English is a common</tspan>
+      <tspan x="244" dy="1.4em">attack vector. The guard</tspan>
+      <tspan x="244" dy="1.4em">must not be English-only.</tspan>
+    </text>
+  </g>
+
+  <!-- reason 2 · Unicode transform -->
+  <g>
+    <rect x="450" y="146" width="180" height="120" rx="8" fill="#FBF1E0" stroke="#E8A33D" stroke-width="0.6"/>
+    <text class="reason" x="464" y="168">
+      <tspan x="464" dy="0">Rare in normal use, but</tspan>
+      <tspan x="464" dy="1.4em">often defeats filters — the</tspan>
+      <tspan x="464" dy="1.4em">guard must be cautious of</tspan>
+      <tspan x="464" dy="1.4em">them.</tspan>
+    </text>
+  </g>
+
+  <!-- reason 3 · Truncation -->
+  <g>
+    <rect x="670" y="146" width="180" height="120" rx="8" fill="#FBF1E0" stroke="#E8A33D" stroke-width="0.6"/>
+    <text class="reason" x="684" y="168">
+      <tspan x="684" dy="0">Must act mid-response,</tspan>
+      <tspan x="684" dy="1.4em">before the harmful tokens</tspan>
+      <tspan x="684" dy="1.4em">reach the user — not only</tspan>
+      <tspan x="684" dy="1.4em">once the answer is done.</tspan>
+    </text>
+  </g>
+
+  <!-- reason 4 · Prompt switching -->
+  <g>
+    <rect x="890" y="146" width="180" height="120" rx="8" fill="#FBF1E0" stroke="#E8A33D" stroke-width="0.6"/>
+    <text class="reason" x="904" y="168">
+      <tspan x="904" dy="0">In the raw data, the harm</tspan>
+      <tspan x="904" dy="1.4em">label = prompt label on</tspan>
+      <tspan x="904" dy="1.4em">every row. Switched-prompt</tspan>
+      <tspan x="904" dy="1.4em">rows force reading the</tspan>
+      <tspan x="904" dy="1.4em">response too.</tspan>
+    </text>
+  </g>
+
+  <!-- ===================== FOOTER CAPTION ===================== -->
+  <text class="sub" x="550" y="300" text-anchor="middle">
+    Splits are group-stratified by original_idx — no exchange appears in two splits.
+  </text>
+</svg>
