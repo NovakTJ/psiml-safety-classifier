@@ -216,16 +216,35 @@
 
 
   <!-- ==================================================================
-       SLIDE 10 — §5 Jailbreaking Qwen [N].  🖼 IMAGE: real G0DM0D3 divider
-       template + Qwen's compliant answer (blurred), big "38 / 300" counter.
-       0/30 for WildGuardMix prompts.  STATUS: data in psiml_data/jailbreak_v1/,
-       compose.
+       SLIDE 10 — §5 Jailbreaking Qwen [N].  🖼 IMAGE: real-qwen-example.png
+       — one of the 38 successful jailbreaks from G0DM0D3 divider templates.
+       WildGuardMix adversarial prompts scored 0 / 30; the divider templates
+       that did break Qwen succeeded only ~10% of the time.
        ================================================================== -->
   <section class="slide slide--light">
     <img class="logo logo--content" src="psiml-logo.png" alt="">
     <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
       Jailbreaking Qwen was the real obstacle
     </h1>
+
+    <div class="at" style="--x:67; --y:150; --w:680; --h:480">
+      <img class="slide-img" src="real-qwen-example.png"
+           alt="a G0DM0D3 divider-template jailbreak that got Qwen3.5-9B to comply"
+           style="width:100%; height:100%; object-fit:contain">
+    </div>
+
+    <div class="at" style="--x:790; --y:180; --w:352">
+      <div class="panel panel--accent">
+        <div class="stat">38&nbsp;/&nbsp;300</div>
+        <div class="stat-label">divider-template jailbreaks that succeeded —
+          ~13%, inconsistent, not reliable</div>
+      </div>
+      <div class="panel" style="margin-top:18px">
+        <div class="stat">0&nbsp;/&nbsp;30</div>
+        <div class="stat-label">WildGuardMix adversarial prompts that jailbroke it</div>
+      </div>
+    </div>
+
     <div class="slide-number">10</div>
   </section>
 
