@@ -14,7 +14,7 @@ written as null; run label_jailbreak_dataset.py later if scenario slicing is
 wanted (prompt_harm_label already gives the exchange label).
 
 Row selection: excludes every row_id used in jailbreak rounds 1-3 (those are
-captured WITH templates in psiml_data/probes/local_replay/). 125 harmful
+captured WITH templates in psiml_data/templated_old_activation_probes/local_replay/). 125 harmful
 (adversarial=False only — near-certain refusals) + 125 benign (both adversarial
 flags), each stratified across languages (round-robin by language, EN included),
 seed 42. NOTE: row_id prefix (orig/trans/weird) is the augmentation TYPE, not
@@ -25,7 +25,7 @@ Run with qwen35_env (transformers 5.15.0 — only env that loads qwen3_5):
 
     /home/mls01/.conda/envs/qwen35_env/bin/python capture_plain_activations.py
 
-Artifacts in psiml_data/probes/plain_prompts/ (activations/ is gitignored):
+Artifacts in psiml_data/templated_old_activation_probes/plain_prompts/ (activations/ is gitignored):
 raw_plain.jsonl + activations/{row_id}.npz, same npz schema as local_replay
 (fp16 hidden [8 layers, n_tokens, 4096] @ layers 3,7,11,15,19,23,27,31;
 span = last 64 prompt tokens + full response).
@@ -50,7 +50,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: E402
 MODEL_PATH = "/data/models/Qwen3.5-9B"
 DATASET = "/home/mls01/data/complete_dataset.jsonl"
 JAILBREAK_DIR = "/home/mls01/psiml_data/jailbreak_v1"
-OUT_DIR = "/home/mls01/psiml_data/probes/plain_prompts"
+OUT_DIR = "/home/mls01/psiml_data/templated_old_activation_probes/plain_prompts"
 OUT_PATH = os.path.join(OUT_DIR, "raw_plain.jsonl")
 ACT_DIR = os.path.join(OUT_DIR, "activations")
 

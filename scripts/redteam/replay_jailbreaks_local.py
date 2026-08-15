@@ -19,10 +19,10 @@ Run with qwen35_env (transformers 5.15.0 — the ONLY env that loads qwen3_5):
 Then label (ccpp_env):
 
     /home/mls01/ccpp_env/bin/python label_jailbreak_dataset.py \
-        --in  /home/mls01/psiml_data/probes/local_replay/raw_local.jsonl \
-        --out /home/mls01/psiml_data/probes/local_replay/labeled_local.jsonl
+        --in  /home/mls01/psiml_data/templated_old_activation_probes/local_replay/raw_local.jsonl \
+        --out /home/mls01/psiml_data/templated_old_activation_probes/local_replay/labeled_local.jsonl
 
-Artifacts (psiml_data/probes/local_replay/ — NOT /tmp, per CLAUDE.md):
+Artifacts (psiml_data/templated_old_activation_probes/local_replay/ — NOT /tmp, per CLAUDE.md):
 - raw_local.jsonl            one row per replay: original metadata, local response,
                              generation params (incl. seed), token counts, guard
                              labels from the ORIGINAL OpenRouter run (openrouter_*),
@@ -66,7 +66,7 @@ from jailbreak_templates import build_messages  # noqa: E402
 
 MODEL_PATH = "/data/models/Qwen3.5-9B"
 IN_PATH = "/home/mls01/psiml_data/jailbreak_v1/successful_jailbreaks.jsonl"
-OUT_DIR = "/home/mls01/psiml_data/probes/local_replay"
+OUT_DIR = "/home/mls01/psiml_data/templated_old_activation_probes/local_replay"
 OUT_PATH = os.path.join(OUT_DIR, "raw_local.jsonl")
 ACT_DIR = os.path.join(OUT_DIR, "activations")
 
