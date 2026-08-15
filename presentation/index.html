@@ -117,12 +117,12 @@
 
 
   <!-- ==================================================================
-       SLIDE 10 — §5 Jailbreaking Qwen [N].  WildGuardMix adversarial prompts
-       scored 0 / 30; the divider templates that did break Qwen succeeded only
-       ~10% of the time.
-       STATUS: 🚧 the divider diagram moved to the next slide 2026-08-15 —
-       the left-hand region (--x:67; --y:150; --w:680; --h:480) is INTENTIONALLY
-       EMPTY, awaiting new art.  Stat panels on the right are final.
+       SLIDE 10 — §5 Jailbreaking Qwen [N].  💬 STATS-ONLY.  WildGuardMix
+       adversarial prompts scored 0 / 30; the divider templates that did break
+       Qwen succeeded only ~10% of the time.
+       The divider diagram moved to the next slide 2026-08-15 and no art
+       replaces it — the two stat cards now run side by side across the full
+       content width (same flex-row treatment as slide 13), vertically centred.
        ================================================================== -->
   <section class="slide slide--light">
     <img class="logo logo--content" src="psiml-logo.png" alt="">
@@ -130,18 +130,19 @@
       Jailbreaking Qwen was the real obstacle
     </h1>
 
-    <!-- TODO: new art goes here — --x:67; --y:150; --w:680; --h:480 -->
+    <div class="at" style="--x:67; --y:220; --w:1146; --h:360; display:flex; gap:24px">
 
-    <div class="at" style="--x:790; --y:180; --w:352">
-      <div class="panel panel--accent">
+      <div class="panel panel--accent" style="flex:1; display:flex; flex-direction:column; justify-content:center">
         <div class="stat">38&nbsp;/&nbsp;300</div>
-        <div class="stat-label">divider-template jailbreaks that succeeded —
+        <div class="stat-label">divider-template jailbreaks that succeeded &mdash;
           ~13%, inconsistent, not reliable</div>
       </div>
-      <div class="panel" style="margin-top:18px">
+
+      <div class="panel" style="flex:1; display:flex; flex-direction:column; justify-content:center">
         <div class="stat">0&nbsp;/&nbsp;30</div>
         <div class="stat-label">WildGuardMix adversarial prompts that jailbroke it</div>
       </div>
+
     </div>
 
     <div class="slide-number">5</div>
