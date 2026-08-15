@@ -12,18 +12,20 @@ this file if the spoken text changes further.
 ## Slide 12 — "Architectures we tried" (text-free list; you're planning to talk more
 here — this section only covers the on-screen list, not your extra ad-libbed content)
 
-Four items, in build order, Qwen3Guard dropped from this list (it's an external
-reference model, not something we built):
+Five items, in build order, Qwen3Guard kept at the end as the external SOTA
+reference point (not something we built, but the benchmark to compare against):
 
 1. Gemma-3-1B zero-shot
 2. Gemma-3-1B + LoRA
 3. Linear probe
 4. Ensemble — probe + LoRA
+5. Qwen3Guard-8B — SOTA reference
 
 > Here's everything we actually built and compared, in the order we built it: a
 > zero-shot Gemma classifier, that same model fine-tuned with LoRA, a linear probe
-> reading Qwen's own activations, and finally an ensemble of the probe and the LoRA
-> classifier together.
+> reading Qwen's own activations, an ensemble of the probe and the LoRA classifier
+> together, and finally Qwen3Guard — an 8-billion-parameter production guard — as
+> the SOTA reference point we're measuring ourselves against.
 
 **~35 words, ~14s** as a bare minimum transition — you said you'll expand on this live,
 so treat this as the floor, not the target.
