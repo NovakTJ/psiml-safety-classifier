@@ -528,13 +528,28 @@
       Red teaming with a frontier coding agent
     </h1>
 
-    <div class="at" style="--x:130; --y:180; --w:1020; --h:440">
-      <ul class="plain-list">
-        <li>Kimi K3 &mdash; the brain</li>
-        <li>Pi harness &mdash; the hands</li>
-        <li>Custom AGENTS.md &mdash; the rules</li>
-        <li>Human hints &mdash; the nudges</li>
-      </ul>
+    <div class="at" style="--x:67; --y:220; --w:1146; --h:280; display:flex; gap:24px">
+
+      <div class="panel panel--accent" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; text-align:center">
+        <div style="font:700 27pt var(--psiml-head); color:var(--psiml-ink)">Kimi K3</div>
+        <div style="font:400 16pt var(--psiml-text); color:var(--psiml-muted)">the brain</div>
+      </div>
+
+      <div class="panel panel--accent" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; text-align:center">
+        <div style="font:700 27pt var(--psiml-head); color:var(--psiml-ink)">Pi harness</div>
+        <div style="font:400 16pt var(--psiml-text); color:var(--psiml-muted)">the hands</div>
+      </div>
+
+      <div class="panel panel--accent" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; text-align:center">
+        <div style="font:700 27pt var(--psiml-head); color:var(--psiml-ink)">AGENTS.md</div>
+        <div style="font:400 16pt var(--psiml-text); color:var(--psiml-muted)">the rules</div>
+      </div>
+
+      <div class="panel panel--accent" style="flex:1; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; text-align:center">
+        <div style="font:700 27pt var(--psiml-head); color:var(--psiml-ink)">Human hints</div>
+        <div style="font:400 16pt var(--psiml-text); color:var(--psiml-muted)">the nudges</div>
+      </div>
+
     </div>
 
     <div class="slide-number">16</div>
@@ -563,31 +578,6 @@
     </div>
 
     <div class="slide-number">17</div>
-  </section>
-
-
-  <!-- ==================================================================
-       SLIDE 22 — §8 Red teaming [?].  🧩 DIAGRAM: classifier_knowledge_probe.svg
-       — base model names the chemical from the common name but hallucinates from
-       the technical description.  (Planned TABLE of aliases, 3 model columns
-       (1B base / 1B+LoRA / 4B) — all fail the aliases, all know the famous
-       names — in gemma_knowledge_probe/REPORT.md if a table is wanted too.)
-       Structural, not fixable by scale; defending would mean blocking chemistry
-       as a topic.  STATUS: ✅ asset placed.
-       ================================================================== -->
-  <section class="slide slide--light">
-    <img class="logo logo--content" src="psiml-logo.png" alt="">
-    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
-      Unguardable at 1B: the gap is knowledge, not capacity
-    </h1>
-
-    <div class="at" style="--x:67; --y:170; --w:1075; --h:426">
-      <img class="slide-img" src="classifier_knowledge_probe.svg"
-           alt="the classifier's base model, asked directly, identifies chemicals by common name but hallucinates when given the technical description of the same chemical"
-           style="width:100%; height:100%; object-fit:contain">
-    </div>
-
-    <div class="slide-number">18</div>
   </section>
 
 
@@ -624,7 +614,7 @@
       </ul>
     </div>
 
-    <div class="slide-number">19</div>
+    <div class="slide-number">18</div>
   </section>
 
 
@@ -676,7 +666,7 @@
       </div>
     </div>
 
-    <div class="slide-number">20</div>
+    <div class="slide-number">19</div>
   </section>
 
 
@@ -708,6 +698,31 @@
         <strong>0 / 30</strong>; only divider-style templates broke it at all.</p>
       </div>
 
+    </div>
+
+    <div class="slide-number">20</div>
+  </section>
+
+
+  <!-- ==================================================================
+       APPENDIX — §8 Red teaming [L].  🧩 DIAGRAM: classifier_knowledge_probe.svg
+       — base model names the chemical from the common name but hallucinates from
+       the technical description.  Moved to the appendix 2026-08-16 (was the
+       main-deck "Unguardable at 1B" slide, right after "Example of an attack
+       that worked") — the finding stays available for Q&A without occupying
+       a main-arc slide slot.  Structural, not fixable by scale; defending
+       would mean blocking chemistry as a topic.
+       ================================================================== -->
+  <section class="slide slide--light">
+    <img class="logo logo--content" src="psiml-logo.png" alt="">
+    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
+      Appendix: unguardable at 1B, the gap is knowledge, not capacity
+    </h1>
+
+    <div class="at" style="--x:67; --y:170; --w:1075; --h:426">
+      <img class="slide-img" src="classifier_knowledge_probe.svg"
+           alt="the classifier's base model, asked directly, identifies chemicals by common name but hallucinates when given the technical description of the same chemical"
+           style="width:100%; height:100%; object-fit:contain">
     </div>
 
     <div class="slide-number">21</div>
