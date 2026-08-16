@@ -609,33 +609,47 @@
     </h1>
 
     <!-- Novak -->
-    <div class="at" style="--x:250; --y:150; --w:260; --h:320">
+    <div class="at" style="--x:305; --y:140; --w:150; --h:180">
       <img src="novak.jpg" alt="Novak Stijepi&#263;"
            style="width:100%; height:100%; object-fit:contain; border-radius:16px; background:var(--psiml-panel); display:block">
     </div>
-    <div class="at" style="--x:170; --y:490; --w:420; --h:190; text-align:center">
+    <div class="at" style="--x:170; --y:330; --w:420; --h:130; text-align:center">
       <div style="font:700 22pt var(--psiml-head); color:var(--psiml-ink)">Novak Stijepi&#263;</div>
-      <div style="margin-top:12px; font:400 17pt var(--psiml-text); color:var(--psiml-body); line-height:1.5">
+      <div style="margin-top:10px; font:400 15pt var(--psiml-text); color:var(--psiml-body); line-height:1.45">
         University of Belgrade<br>
         School of Electrical Engineering<br>
-        Finishing third year &middot; Software Engineering<br>
-        linkedin.com/in/novakstijepic
+        Finishing third year &middot; Software Engineering
       </div>
+    </div>
+    <div class="at" style="--x:290; --y:462; --w:180; --h:180">
+      <img src="novak-qr.png" alt="LinkedIn QR &mdash; Novak Stijepi&#263;"
+           style="width:100%; height:100%; object-fit:contain; display:block">
+    </div>
+    <div class="at" style="--x:170; --y:648; --w:420; --h:32; text-align:center;
+                           font:400 13pt var(--psiml-text); color:var(--psiml-body)">
+      linkedin.com/in/novakstijepic
     </div>
 
     <!-- Lazar -->
-    <div class="at" style="--x:770; --y:150; --w:260; --h:320">
+    <div class="at" style="--x:825; --y:140; --w:150; --h:180">
       <img src="lazar.jpg" alt="Lazar Stojanovi&#263;"
            style="width:100%; height:100%; object-fit:contain; border-radius:16px; background:var(--psiml-panel); display:block">
     </div>
-    <div class="at" style="--x:690; --y:490; --w:420; --h:190; text-align:center">
+    <div class="at" style="--x:690; --y:330; --w:420; --h:130; text-align:center">
       <div style="font:700 22pt var(--psiml-head); color:var(--psiml-ink)">Lazar Stojanovi&#263;</div>
-      <div style="margin-top:12px; font:400 17pt var(--psiml-text); color:var(--psiml-body); line-height:1.5">
+      <div style="margin-top:10px; font:400 15pt var(--psiml-text); color:var(--psiml-body); line-height:1.45">
         Union University<br>
         School of Computing, Belgrade<br>
-        Finishing third year &middot; Computer Science<br>
-        linkedin.com/in/lazar-stojanovic-450b05271
+        Finishing third year &middot; Computer Science
       </div>
+    </div>
+    <div class="at" style="--x:810; --y:462; --w:180; --h:180">
+      <img src="lazar-qr.png" alt="LinkedIn QR &mdash; Lazar Stojanovi&#263;"
+           style="width:100%; height:100%; object-fit:contain; display:block">
+    </div>
+    <div class="at" style="--x:690; --y:648; --w:420; --h:32; text-align:center;
+                           font:400 13pt var(--psiml-text); color:var(--psiml-body)">
+      linkedin.com/in/lazar-stojanovic-450b05271
     </div>
 
     <div class="slide-number">17</div>
@@ -750,6 +764,164 @@
     </div>
 
     <div class="slide-number">21</div>
+  </section>
+
+
+  <!-- ==================================================================
+       APPENDIX CHARTS (added 2026-08-16).  Six plots from the analyses that
+       were cut from the dumbed-down main arc.  Sources are the REPORT.md
+       files under scripts/model/results/; every value is transcribed from a
+       report table, nothing is fitted or invented here.  Each SVG is
+       regenerable: appendix_charts/chartN_*.py, run with ~/aegis_env/bin/python
+       (altair + vl-convert, data inline in the script).
+       ================================================================== -->
+
+  <!-- APPENDIX A1 — probe threshold sweep.  Deliberately NOT called an ROC
+       curve: no AUC was ever computed, and the third axis (routing rate) is
+       the one that matters for the cascade.  Source:
+       linear_probe_v2_layer27_lasttoken_sweep/REPORT.md, 7 tabulated rows. -->
+  <section class="slide slide--light">
+    <img class="logo logo--content" src="psiml-logo.png" alt="">
+    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
+      Appendix: probe operating curve &mdash; threshold sweep
+    </h1>
+
+    <div class="at" style="--x:67; --y:140; --w:1146; --h:495">
+      <img class="slide-img" src="appendix_charts/chart1_probe_operating_curve.svg"
+           alt="harmful recall, false-positive rate and routing rate plotted against the probe decision threshold, with a shaded knee band at t between 0.10 and 0.15"
+           style="width:100%; height:100%; object-fit:contain">
+    </div>
+
+    <div class="at body" style="--x:67; --y:650; --w:1146; --h:40; font-size:15pt">
+      <p>Validation, n&nbsp;=&nbsp;259. The knee at t&nbsp;&asymp;&nbsp;0.10&ndash;0.15 buys recall
+      0.95&ndash;0.96 while routing about two thirds of traffic to the guard.</p>
+    </div>
+
+    <div class="slide-number">22</div>
+  </section>
+
+
+  <!-- APPENDIX A2 — the most important negative result in the project:
+       selecting on validation F1 alone picks layer15_mean_prompt, which
+       ignores the response entirely and catches 1/51 switched-prompt rows.
+       Only the top-10 of 32 layer x pooling combos are in the report (the
+       sweep CSV is cluster-only), so Panel A plots 10 and says so. -->
+  <section class="slide slide--light">
+    <img class="logo logo--content" src="psiml-logo.png" alt="">
+    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
+      Appendix: validation F1 alone selects a prompt-only probe
+    </h1>
+
+    <div class="at" style="--x:67; --y:140; --w:1146; --h:495">
+      <img class="slide-img" src="appendix_charts/chart2_layer_pooling_selection.svg"
+           alt="ranked validation F1 by layer and pooling, and a scatter of validation F1 against switched-prompt recall showing the highest-F1 feature scoring near-zero recall"
+           style="width:100%; height:100%; object-fit:contain">
+    </div>
+
+    <div class="at body" style="--x:67; --y:650; --w:1146; --h:40; font-size:15pt">
+      <p>The F1 winner (layer&nbsp;15, mean-prompt) catches 1/51 benign-prompt&nbsp;+&nbsp;harmful-response
+      rows; the response-aware pick catches 51/51 at 0.045 lower F1.</p>
+    </div>
+
+    <div class="slide-number">23</div>
+  </section>
+
+
+  <!-- APPENDIX A3 — lr x rank grid, dropout, multiseed.  The point is the
+       error bars: most of the grid is inside the +/-0.0032 seed noise, so
+       the "winner" of a 259-row validation is barely a winner. -->
+  <section class="slide slide--light">
+    <img class="logo logo--content" src="psiml-logo.png" alt="">
+    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
+      Appendix: LoRA hyperparameter sweep, and how much of it is noise
+    </h1>
+
+    <div class="at" style="--x:67; --y:140; --w:1146; --h:495">
+      <img class="slide-img" src="appendix_charts/chart3_lora_hyperparam_sweep.svg"
+           alt="heatmap of validation F1 over learning rate by rank, a dropout comparison panel, and a multi-seed panel with error bars"
+           style="width:100%; height:100%; object-fit:contain">
+    </div>
+
+    <div class="at body" style="--x:67; --y:650; --w:1146; --h:40; font-size:15pt">
+      <p>Validation, n&nbsp;=&nbsp;259. Top two grid cells differ by 0.0004 F1 &mdash; a fraction of one
+      example. Seed std is &plusmn;0.0032, so the outlined cells are indistinguishable.</p>
+    </div>
+
+    <div class="slide-number">24</div>
+  </section>
+
+
+  <!-- APPENDIX A4 — why the cascade exists at all.  r(pi) and precision(pi)
+       are closed-form in prevalence given the four measured stage rates, so
+       the curves are derived, not fitted; the four dots are the reports'
+       own tabulated prevalences. -->
+  <section class="slide slide--light">
+    <img class="logo logo--content" src="psiml-logo.png" alt="">
+    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
+      Appendix: what the probe gate saves, and what it costs
+    </h1>
+
+    <div class="at" style="--x:67; --y:140; --w:1146; --h:495">
+      <img class="slide-img" src="appendix_charts/chart4_cascade_cost_curve.svg"
+           alt="relative cost against always-on classifier, and deployment precision, both plotted against harmful prevalence on log axes"
+           style="width:100%; height:100%; object-fit:contain">
+    </div>
+
+    <div class="at body" style="--x:67; --y:650; --w:1146; --h:40; font-size:15pt">
+      <p>At 1% harmful traffic the cascade runs at ~13% of always-on-classifier cost at recall 0.95
+      &mdash; but deployment precision collapses as prevalence falls.</p>
+    </div>
+
+    <div class="slide-number">25</div>
+  </section>
+
+
+  <!-- APPENDIX A5 — the "should we have collected more data" answer.  The
+       report's naive extrapolations to 3970/7940 rows are deliberately NOT
+       plotted; they are flagged as cautions in the source. -->
+  <section class="slide slide--light">
+    <img class="logo logo--content" src="psiml-logo.png" alt="">
+    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
+      Appendix: the learning curve is still rising at full data
+    </h1>
+
+    <div class="at" style="--x:67; --y:140; --w:1146; --h:495">
+      <img class="slide-img" src="appendix_charts/chart5_learning_curve.svg"
+           alt="validation F1 against training set size on a log2 axis, with a log-linear trend line, second-seed points and a shaded seed-noise band"
+           style="width:100%; height:100%; object-fit:contain">
+    </div>
+
+    <div class="at body" style="--x:67; --y:650; --w:1146; --h:40; font-size:15pt">
+      <p>+0.0186 F1 per doubling of data; the last segment is still +0.0166. More data of the same
+      distribution would likely still help.</p>
+    </div>
+
+    <div class="slide-number">26</div>
+  </section>
+
+
+  <!-- APPENDIX A6 — all eight systems on the identical 227 test rows, scored
+       with one metric function.  Panel B is the honest part: the validation
+       winner (DoRA all-linear) fell to 6th of 8 on test.  Note the truncated
+       y-axis on Panel B, added to make the crossing legible. -->
+  <section class="slide slide--light">
+    <img class="logo logo--content" src="psiml-logo.png" alt="">
+    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
+      Appendix: every system on the held-out test set
+    </h1>
+
+    <div class="at" style="--x:67; --y:140; --w:1146; --h:495">
+      <img class="slide-img" src="appendix_charts/chart6_system_comparison.svg"
+           alt="grouped bars of F1, recall and false-positive rate for eight systems on the test set, and a slope plot of validation to test F1 for the LoRA and DoRA ablation arms"
+           style="width:100%; height:100%; object-fit:contain">
+    </div>
+
+    <div class="at body" style="--x:67; --y:650; --w:1146; --h:40; font-size:15pt">
+      <p>Test n&nbsp;=&nbsp;227 (127 harmful / 100 unharmful). The validation winner dropped to 6th of 8
+      on test; the 4&times;-smaller attention-only LoRA rose to 2nd.</p>
+    </div>
+
+    <div class="slide-number">27</div>
   </section>
 
 </div>
