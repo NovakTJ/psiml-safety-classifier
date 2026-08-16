@@ -44,12 +44,8 @@
     </svg>
 
     <h1 class="h1-title at" style="--x:67; --y:163; --w:729; --h:182">
-      Safety Classifiers
+      Safety classifier for guarding LLMs
     </h1>
-
-    <p class="subtitle-title at" style="--x:67; --y:345; --w:691; --h:86">
-      Training a guard model, and finding the attack it cannot stop
-    </p>
 
     <p class="presenters at" style="--x:67; --y:499; --w:691; --h:96">
       Novak Stijepić &middot; Lazar Stojanović
@@ -162,12 +158,12 @@
 
     <div class="at" style="--x:67; --y:160; --w:1146; --h:120">
       <div class="panel panel--accent" style="display:flex; flex-direction:column; justify-content:center; height:100%">
-        <div class="panel-heading" style="font-size:26pt">Translation</div>
+        <div class="panel-heading" style="font-size:26pt">LLM-powered translation</div>
       </div>
     </div>
 
     <div class="at body" style="--x:67; --y:330; --w:1146; --h:280; font-size:19pt">
-      <p>Harmful prompts and responses translated out of English.</p>
+      <p>Harmful prompts and responses translated out of English by an LLM.</p>
       <p><strong>Why:</strong> non-English phrasing is a common attack vector &mdash; a guard trained
       on English alone simply stops seeing the harm. The classifier must not be English-only.</p>
     </div>
@@ -200,11 +196,8 @@
     </div>
 
     <div class="at body" style="--x:67; --y:545; --w:1146; --h:150; font-size:17pt">
-      <p><strong>Why:</strong> the obfuscation fools nobody &mdash; a reader, and the chat model, understand
-      the request perfectly well. What it does is <em>slip past the chat model's own safety behaviour</em>:
-      the request no longer looks like the harmful phrasings refusal was trained on, so the model answers.
-      The classifier has to catch what the chat model stopped catching &mdash; and treat character noise
-      like this, rare in honest use, as suspicious in itself.</p>
+      <p><strong>Why:</strong> the classifier has to catch what the chat model stopped catching &mdash;
+      and treat character noise like this, rare in honest use, as suspicious in itself.</p>
     </div>
 
     <div class="slide-number">6</div>
@@ -263,27 +256,6 @@
   </section>
 
 
-  <!-- ==================================================================
-       SLIDE — §5 Jailbreaking Qwen [N].  🧩 DIAGRAM: divider_jailbreak_qwen_label_outside.svg
-       — the divider-template jailbreak pattern (injected instruction forces
-       one reply with a refusal, an exact divider string, then the harmful
-       answer).  Moved here from the previous slide 2026-08-15 so it gets a
-       beat of its own; the previous slide keeps the stats and gets new art.
-       ================================================================== -->
-  <section class="slide slide--light">
-    <img class="logo logo--content" src="psiml-logo.png" alt="">
-    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
-      Modern jailbreak example
-    </h1>
-
-    <div class="at" style="--x:155; --y:130; --w:970; --h:575">
-      <img class="slide-img" src="divider_jailbreak_qwen_label_outside.svg"
-           alt="divider-template jailbreak pattern: one reply holds a refusal, a divider string, then the harmful answer"
-           style="width:100%; height:100%; object-fit:contain">
-    </div>
-
-    <div class="slide-number">9</div>
-  </section>
 
 
   <!-- ==================================================================
@@ -306,7 +278,7 @@
       </ul>
     </div>
 
-    <div class="slide-number">10</div>
+    <div class="slide-number">9</div>
   </section>
 
 
@@ -410,7 +382,7 @@
 
     </svg>
 
-    <div class="slide-number">11</div>
+    <div class="slide-number">10</div>
   </section>
 
 
@@ -446,7 +418,7 @@
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
-    <div class="slide-number">12</div>
+    <div class="slide-number">11</div>
   </section>
 
 
@@ -465,7 +437,7 @@
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
-    <div class="slide-number">13</div>
+    <div class="slide-number">12</div>
   </section>
 
 
@@ -486,7 +458,7 @@
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
-    <div class="slide-number">14</div>
+    <div class="slide-number">13</div>
   </section>
 
 
@@ -511,7 +483,7 @@
       </ul>
     </div>
 
-    <div class="slide-number">15</div>
+    <div class="slide-number">14</div>
   </section>
 
 
@@ -581,7 +553,7 @@
       </span>
     </div>
 
-    <div class="slide-number">16</div>
+    <div class="slide-number">15</div>
   </section>
 
 
@@ -606,7 +578,7 @@
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
-    <div class="slide-number">17</div>
+    <div class="slide-number">16</div>
   </section>
 
 
@@ -631,7 +603,7 @@
            style="width:100%; height:100%; object-fit:contain">
     </div>
 
-    <div class="slide-number">18</div>
+    <div class="slide-number">17</div>
   </section>
 
 
@@ -666,7 +638,7 @@
       </ul>
     </div>
 
-    <div class="slide-number">19</div>
+    <div class="slide-number">18</div>
   </section>
 
 
@@ -718,7 +690,7 @@
       </div>
     </div>
 
-    <div class="slide-number">20</div>
+    <div class="slide-number">19</div>
   </section>
 
 
@@ -752,7 +724,58 @@
 
     </div>
 
+    <div class="slide-number">20</div>
+  </section>
+
+
+  <!-- ==================================================================
+       APPENDIX — §5 Jailbreaking Qwen [N].  🧩 DIAGRAM: divider_jailbreak_qwen_label_outside.svg
+       — the divider-template jailbreak pattern (injected instruction forces
+       one reply with a refusal, an exact divider string, then the harmful
+       answer).  Moved here from the previous slide 2026-08-15 so it gets a
+       beat of its own; the previous slide keeps the stats and gets new art.
+       Moved to the very end 2026-08-16.
+       ================================================================== -->
+  <section class="slide slide--light">
+    <img class="logo logo--content" src="psiml-logo.png" alt="">
+    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
+      Modern jailbreak example
+    </h1>
+
+    <div class="at" style="--x:155; --y:130; --w:970; --h:575">
+      <img class="slide-img" src="divider_jailbreak_qwen_label_outside.svg"
+           alt="divider-template jailbreak pattern: one reply holds a refusal, a divider string, then the harmful answer"
+           style="width:100%; height:100%; object-fit:contain">
+    </div>
+
     <div class="slide-number">21</div>
+  </section>
+
+
+  <!-- ==================================================================
+       APPENDIX — AEGIS guarded-chat video demo (chat-demo.mp4).  Backup
+       slide for "can we see it running?" questions.  Not autoplayed: the
+       nav script starts it when the slide becomes active and pauses it on
+       leave, so it never plays behind other slides.
+       ================================================================== -->
+  <section class="slide slide--light">
+    <img class="logo logo--content" src="psiml-logo.png" alt="">
+    <h1 class="h1-content at" style="--x:67; --y:53; --w:1075; --h:82">
+      Appendix: AEGIS guarded chat &mdash; demo
+    </h1>
+
+    <div class="at" style="--x:67; --y:145; --w:1146; --h:500">
+      <video class="slide-demo" src="chat-demo.mp4"
+             controls muted loop playsinline preload="metadata"
+             style="width:100%; height:100%; object-fit:contain; background:#000"></video>
+    </div>
+
+    <div class="at body" style="--x:67; --y:660; --w:1146; --h:40; font-size:15pt">
+      <p>Token-0 pre-check blocks the prompt before the target model is ever called;
+      a block ends the conversation.</p>
+    </div>
+
+    <div class="slide-number">22</div>
   </section>
 
 </div>
@@ -774,6 +797,11 @@ let i = 0;
 const show = (n, push = true) => {
   i = Math.max(0, Math.min(slides.length - 1, n));
   slides.forEach((s, k) => s.toggleAttribute('data-active', k === i));
+  // Videos only ever run on the visible slide.
+  document.querySelectorAll('.slide video').forEach(v => {
+    if (v.closest('.slide') === slides[i]) { v.currentTime = 0; v.play().catch(() => {}); }
+    else v.pause();
+  });
   if (push) history.replaceState(null, '', '#' + (i + 1));
 };
 const fromHash = () => show((parseInt(location.hash.slice(1), 10) || 1) - 1, false);
