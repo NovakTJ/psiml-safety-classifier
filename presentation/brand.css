@@ -121,6 +121,16 @@ html, body {
   overflow: hidden;
 }
 
+/* Mobile browsers will happily let a 1280px-wide layout box widen the visual
+   viewport even with overflow:hidden; pinning body to the viewport stops the
+   deck from being pannable/half-visible on a phone. */
+body {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  touch-action: pan-y;
+}
+
 .deck {
   position: absolute;
   top: 50%;
@@ -359,4 +369,31 @@ code {
   html, body { overflow: visible; background: #fff; }
   .deck { position: static; transform: none; width: 1280px; height: auto; }
   .slide { position: relative; display: block; break-after: page; }
+}
+
+/* --- On-screen navigation (phones, and anything without a keyboard) ------- */
+
+.deck-nav {
+  position: fixed;
+  right: max(12px, env(safe-area-inset-right));
+  bottom: max(12px, env(safe-area-inset-bottom));
+  display: none;
+  gap: 10px;
+  z-index: 10;
+}
+.deck-nav button {
+  width: 44px; height: 44px;
+  border: 1px solid rgba(255, 255, 255, .35);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, .55);
+  color: #fff;
+  font: 400 24px/1 var(--psiml-text);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+@media (pointer: coarse), (max-width: 900px) {
+  .deck-nav { display: flex; }
+}
+@media print {
+  .deck-nav { display: none !important; }
 }

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Safety Classifiers — PSIML 11</title>
 <link rel="stylesheet" href="brand.css">
 </head>
@@ -57,7 +57,7 @@
     <p class="nav-hint at" style="--x:67; --y:628; --w:900">
       <span class="key">&larr;</span> <span class="key">&rarr;</span> or
       <span class="key">space</span> to move between slides &mdash;
-      on a phone, swipe or tap the left / right half of the screen.
+      on a phone, swipe sideways or use the &lsaquo;&nbsp;&rsaquo; buttons.
     </p>
 
   </section>
@@ -830,14 +830,26 @@
 
 </div>
 
+<nav class="deck-nav" aria-label="Slide navigation">
+  <button type="button" data-nav="-1" aria-label="Previous slide">&lsaquo;</button>
+  <button type="button" data-nav="1"  aria-label="Next slide">&rsaquo;</button>
+</nav>
+
 <script>
 // Scale the 1280x720 canvas to fit the viewport. Pure CSS cannot do this:
 // transform: scale() needs a unitless number, and calc(100vw / 1280) is a length.
+// On phones innerWidth/innerHeight lag behind the real visible area (browser
+// chrome, orientation change), so prefer visualViewport when it exists.
 const deck = document.querySelector('.deck');
-const fit = () => deck.style.setProperty(
-  '--deck-scale', Math.min(innerWidth / 1280, innerHeight / 720)
-);
+const fit = () => {
+  const vv = window.visualViewport;
+  const w = vv ? vv.width  : innerWidth;
+  const h = vv ? vv.height : innerHeight;
+  deck.style.setProperty('--deck-scale', Math.min(w / 1280, h / 720));
+};
 addEventListener('resize', fit);
+addEventListener('orientationchange', () => setTimeout(fit, 100));
+window.visualViewport?.addEventListener('resize', fit);
 fit();
 
 // Arrow / space navigation, with #n deep links so any slide is directly
@@ -860,6 +872,24 @@ addEventListener('keydown', e => {
   if (['ArrowRight', 'PageDown', ' '].includes(e.key)) { show(i + 1); e.preventDefault(); }
   if (['ArrowLeft', 'PageUp'].includes(e.key))         { show(i - 1); e.preventDefault(); }
 });
+document.querySelectorAll('.deck-nav button').forEach(b =>
+  b.addEventListener('click', () => show(i + Number(b.dataset.nav)))
+);
+
+// Touch: a mostly-horizontal swipe of at least 40px moves one slide. Vertical
+// drags and pinches are left alone so the page still behaves like a page.
+let t0 = null;
+addEventListener('touchstart', e => {
+  t0 = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
+}, { passive: true });
+addEventListener('touchend', e => {
+  if (!t0) return;
+  const dx = e.changedTouches[0].clientX - t0.x;
+  const dy = e.changedTouches[0].clientY - t0.y;
+  t0 = null;
+  if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) show(i + (dx < 0 ? 1 : -1));
+}, { passive: true });
+
 addEventListener('hashchange', fromHash);
 fromHash();
 </script>
