@@ -843,6 +843,9 @@
 const deck = document.querySelector('.deck');
 const fit = () => {
   const vv = window.visualViewport;
+  // While the user is pinch-zoomed in, visualViewport reports the zoomed
+  // (smaller) box; refitting to it would cancel out their zoom. Leave it be.
+  if (vv && vv.scale > 1.01) return;
   const w = vv ? vv.width  : innerWidth;
   const h = vv ? vv.height : innerHeight;
   deck.style.setProperty('--deck-scale', Math.min(w / 1280, h / 720));
@@ -883,7 +886,7 @@ addEventListener('touchstart', e => {
   t0 = e.touches.length === 1 ? { x: e.touches[0].clientX, y: e.touches[0].clientY } : null;
 }, { passive: true });
 addEventListener('touchend', e => {
-  if (!t0) return;
+  if (!t0 || (window.visualViewport?.scale ?? 1) > 1.01) { t0 = null; return; }
   const dx = e.changedTouches[0].clientX - t0.x;
   const dy = e.changedTouches[0].clientY - t0.y;
   t0 = null;

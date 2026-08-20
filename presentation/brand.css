@@ -128,7 +128,9 @@ body {
   position: fixed;
   inset: 0;
   width: 100%;
-  touch-action: pan-y;
+  /* 'manipulation' keeps pinch-zoom (essential for reading dense chart slides
+     on a phone) while dropping the 300ms double-tap-zoom delay. */
+  touch-action: manipulation;
 }
 
 .deck {
@@ -366,7 +368,9 @@ code {
 @page { size: 1280px 720px; margin: 0; }
 
 @media print {
-  html, body { overflow: visible; background: #fff; }
+  /* body is position:fixed on screen (mobile viewport pinning); a fixed body
+     clips paged output to a single page, so undo it for print. */
+  html, body { overflow: visible; background: #fff; position: static; }
   .deck { position: static; transform: none; width: 1280px; height: auto; }
   .slide { position: relative; display: block; break-after: page; }
 }
@@ -383,9 +387,11 @@ code {
 }
 .deck-nav button {
   width: 44px; height: 44px;
-  border: 1px solid rgba(255, 255, 255, .35);
+  /* These sit on the black letterbox around the deck, so they need real
+     contrast against #000 rather than a dark translucent fill. */
+  border: 1px solid rgba(255, 255, 255, .55);
   border-radius: 50%;
-  background: rgba(0, 0, 0, .55);
+  background: rgba(255, 255, 255, .14);
   color: #fff;
   font: 400 24px/1 var(--psiml-text);
   cursor: pointer;
